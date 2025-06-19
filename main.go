@@ -4,10 +4,10 @@ import (
 	"flag"
 	"os"
 
-	"github.com/dodopizza/jaeger-kusto/runner"
+	"github.com/Azure/jaeger-kusto/runner"
 
-	"github.com/dodopizza/jaeger-kusto/config"
-	"github.com/dodopizza/jaeger-kusto/store"
+	"github.com/Azure/jaeger-kusto/config"
+	"github.com/Azure/jaeger-kusto/store"
 )
 
 func main() {

@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.com/hashicorp/go-hclog"
 	"net"
 	"net/http"
 	"net/http/pprof"
+
+	"github.com/hashicorp/go-hclog"
 )
 
 func ServeDiagnosticsServer(pc *PluginConfig, logger hclog.Logger) error {

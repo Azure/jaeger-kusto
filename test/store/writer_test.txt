@@ -1,15 +1,15 @@
 //go:build integration
 // +build integration
 
-package test
+package store
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/dodopizza/jaeger-kusto/config"
-	"github.com/dodopizza/jaeger-kusto/store"
+	"github.com/Azure/jaeger-kusto/config"
+	"github.com/Azure/jaeger-kusto/store"
 
 	"github.com/stretchr/testify/assert"
 

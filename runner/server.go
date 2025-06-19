@@ -2,10 +2,6 @@ package runner
 
 import (
 	"fmt"
-	"github.com/dodopizza/jaeger-kusto/config"
-	"github.com/hashicorp/go-hclog"
-	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
-	"google.golang.org/grpc"
 	"io"
 	"net"
 	"net/url"
@@ -14,6 +10,11 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/Azure/jaeger-kusto/config"
+	"github.com/hashicorp/go-hclog"
+	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
+	"google.golang.org/grpc"
 )
 
 func serveServer(c *config.PluginConfig, store shared.StoragePlugin, logger hclog.Logger) error {

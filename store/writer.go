@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-kusto-go/kusto/ingest"
-	"github.com/dodopizza/jaeger-kusto/config"
+	"github.com/Azure/jaeger-kusto/config"
 	"github.com/hashicorp/go-hclog"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/tushar2708/altcsv"

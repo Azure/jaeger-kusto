@@ -30,7 +30,6 @@ type kustoReaderClient interface {
 	Query(ctx context.Context, db string, query kusto.Statement, options ...kusto.QueryOption) (*kusto.RowIterator, error)
 }
 
-
 func newKustoSpanReader(factory *kustoFactory, logger hclog.Logger, defaultReadOptions []kusto.QueryOption) (*kustoSpanReader, error) {
 	return &kustoSpanReader{
 		factory.Reader(),
@@ -52,7 +51,7 @@ func GetClientId() string {
 func (r *kustoSpanReader) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
 	kustoStmt := kql.New("").AddTable(r.tableName).AddLiteral(getTraceQuery)
 	kustoStmtParams := kql.NewParameters().AddString("ParamTraceID", traceID.String())
-
+	r.logger.Debug(kustoStmt.String())
 	clientRequestId := GetClientId()
 	// Append a client request id as well to the request
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions,
@@ -91,7 +90,7 @@ func (r *kustoSpanReader) GetTrace(ctx context.Context, traceID model.TraceID) (
 func (r *kustoSpanReader) GetServices(ctx context.Context) ([]string, error) {
 	clientRequestId := GetClientId()
 	kustoStmt := kql.New(queryResultsCacheAge).AddTable(r.tableName).AddLiteral(getServicesQuery)
-	r.logger.Debug("GetServicesQuery : %s ", kustoStmt.String())
+	r.logger.Debug(kustoStmt.String())
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId))...)
 
 	if err != nil {

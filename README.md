@@ -1,7 +1,7 @@
 # Azure Data Explorer (Kusto) gRPC backend for Jaeger
 
 
-This is a storage grpc-plugin for [Jaeger end-to-end distributed tracing system](https://www.jaegertracing.io/) and was originally forked from https://github.com/dodopizza/jaeger-kusto and extended now to support OTEL exporter used with ADX.
+This is a storage grpc-plugin for [Jaeger end-to-end distributed tracing system](https://www.jaegertracing.io/) and was originally forked from https://github.com/Azure/jaeger-kusto and extended now to support OTEL exporter used with ADX.
 
 
 

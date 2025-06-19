@@ -61,7 +61,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: dodopizza/jaeger-kusto-collector
+          repository: Azure/jaeger-kusto-collector
           dockerfile: build/plugin/Dockerfile.collector
           tag_with_ref: true
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -71,7 +71,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: dodopizza/jaeger-kusto-query
+          repository: Azure/jaeger-kusto-query
           dockerfile: build/plugin/Dockerfile.query
           tag_with_ref: true
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -81,7 +81,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: dodopizza/jaeger-kusto-agent
+          repository: Azure/jaeger-kusto-agent
           dockerfile: build/plugin/Dockerfile.agent
           tag_with_ref: true
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -91,7 +91,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: dodopizza/jaeger-kusto
+          repository: Azure/jaeger-kusto
           dockerfile: build/plugin/Dockerfile
           tag_with_ref: true
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -101,7 +101,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: dodopizza/jaeger-kusto-plugin
+          repository: Azure/jaeger-kusto-plugin
           dockerfile: build/server/Dockerfile
           tag_with_ref: true
           push: ${{ startsWith(github.ref, 'refs/tags/') }}

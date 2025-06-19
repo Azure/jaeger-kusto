@@ -1,10 +1,10 @@
 //go:build integration
 // +build integration
 
-package test
+package store
 
 import (
-	"github.com/dodopizza/jaeger-kusto/config"
+	"github.com/Azure/jaeger-kusto/config"
 )
 
 const (
@@ -19,11 +19,9 @@ var (
 
 func NewTestPluginConfig() *config.PluginConfig {
 	pc := config.NewDefaultPluginConfig()
-
 	// override values for testing purpose
-	pc.KustoConfigPath = "../../jaeger-kusto-config.json"
+	pc.KustoConfigPath = "jaeger-kusto-config.json"
 	pc.LogLevel = "debug"
 	pc.WriterWorkersCount = 1
-
 	return pc
 }

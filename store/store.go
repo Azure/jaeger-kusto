@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/Azure/azure-kusto-go/kusto"
-	"github.com/dodopizza/jaeger-kusto/config"
+	"github.com/Azure/jaeger-kusto/config"
 	"github.com/hashicorp/go-hclog"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
@@ -30,7 +30,7 @@ func NewStore(pc *config.PluginConfig, kc *config.KustoConfig, logger hclog.Logg
 		}
 	} else {
 		if kc.UseWorkloadIdentity {
-			logger.Info("Using workload identity for authentication")
+			logger.Info("Using default identity for authentication")
 			kcsb = kusto.NewConnectionStringBuilder(kc.Endpoint).WithDefaultAzureCredential()
 		} else {
 			if kc.ClientID == "" || kc.ClientSecret == "" || kc.TenantID == "" {
@@ -40,7 +40,7 @@ func NewStore(pc *config.PluginConfig, kc *config.KustoConfig, logger hclog.Logg
 			kcsb = kusto.NewConnectionStringBuilder(kc.Endpoint).WithAadAppKey(kc.ClientID, kc.ClientSecret, kc.TenantID)
 		}
 	}
-	kcsb.SetConnectorDetails("Kusto Jaeger", "0.0.1", "plugin", "", false, "")
+	kcsb.SetConnectorDetails("Jaeger", "1.0.0", "plugin", "", false, "")
 	client, err := kusto.New(kcsb)
 	if err != nil {
 		return nil, err
