@@ -217,12 +217,12 @@ func (r *kustoSpanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 
 	if query.DurationMin != 0 {
 		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMin`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMin", query.DurationMin)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMin", query.DurationMin.Microseconds())
 	}
 
 	if query.DurationMax != 0 {
 		kustoStmt = kustoStmt.AddLiteral(` | where Duration < ParamDurationMax`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMax", query.DurationMax)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMax", query.DurationMax.Microseconds())
 	}
 
 	kustoStmt = kustoStmt.AddLiteral("| summarize by TraceID")
@@ -299,12 +299,12 @@ func (r *kustoSpanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 	if query.DurationMin != 0 {
 		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMin`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMin", query.DurationMin)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMin", query.DurationMin.Microseconds())
 	}
 
 	if query.DurationMax != 0 {
 		kustoStmt = kustoStmt.AddLiteral(` | where Duration < ParamDurationMax`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMax", query.DurationMax)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMax", query.DurationMax.Microseconds())
 	}
 
 	kustoStmt = kustoStmt.AddLiteral(" | summarize by TraceID")
