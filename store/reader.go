@@ -222,7 +222,7 @@ func (r *kustoSpanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 	}
 
 	if query.DurationMax != 0 {
-		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMax`)
+		kustoStmt = kustoStmt.AddLiteral(` | where Duration < ParamDurationMax`)
 		kustoParameters = kustoParameters.AddTimespan("ParamDurationMax", query.DurationMax)
 	}
 
@@ -304,7 +304,7 @@ func (r *kustoSpanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	}
 
 	if query.DurationMax != 0 {
-		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMax`)
+		kustoStmt = kustoStmt.AddLiteral(` | where Duration < ParamDurationMax`)
 		kustoParameters = kustoParameters.AddTimespan("ParamDurationMax", query.DurationMax)
 	}
 
@@ -314,7 +314,7 @@ func (r *kustoSpanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	kustoParameters = kustoParameters.AddInt("ParamNumTraces", int32(query.NumTraces))
 
 	kustoStmt = kustoStmt.AddLiteral(`); `).AddTable(r.tableName).AddLiteral(getTracesBaseQuery)
-	
+
 	kustoStmt = kustoStmt.AddLiteral(` | where StartTime > ParamStartTimeMin`)
 	kustoParameters = kustoParameters.AddDateTime("ParamStartTimeMin", query.StartTimeMin)
 
