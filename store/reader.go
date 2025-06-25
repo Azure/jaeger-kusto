@@ -30,7 +30,6 @@ type kustoReaderClient interface {
 	Query(ctx context.Context, db string, query kusto.Statement, options ...kusto.QueryOption) (*kusto.RowIterator, error)
 }
 
-var queryMap = map[string]string{}
 
 func newKustoSpanReader(factory *kustoFactory, logger hclog.Logger, defaultReadOptions []kusto.QueryOption) (*kustoSpanReader, error) {
 	return &kustoSpanReader{
