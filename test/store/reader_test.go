@@ -133,3 +133,141 @@ func TestStore_DependencyReader(t *testing.T) {
 	}
 	fmt.Printf("%+v\n", dependencyLinks)
 }
+
+func TestFindTracesWithDurationMaxVerification(t *testing.T) {
+	query := &spanstore.TraceQueryParameters{
+		ServiceName:  "test-service",
+		StartTimeMin: time.Date(2023, time.January, 29, 06, 0, 0, 0, time.UTC),
+		StartTimeMax: time.Date(2023, time.January, 30, 23, 0, 0, 0, time.UTC),
+		DurationMax:  time.Millisecond * 500,
+		NumTraces:    10,
+	}
+
+	kustoConfig := &config.KustoConfig{
+		ClientID:       "test-client-id",
+		ClientSecret:   "test-client-secret",
+		TenantID:       "test-tenant-id",
+		Endpoint:       "https://test.kusto.windows.net",
+		Database:       "test-db",
+		TraceTableName: "OTELTraces",
+	}
+
+	var buf bytes.Buffer
+	logger := hclog.New(&hclog.LoggerOptions{
+		Output: &buf,
+		Level:  hclog.Debug,
+	})
+
+	kustoStore, err := store.NewStore(testPluginConfig, kustoConfig, logger)
+	if err != nil {
+		t.Skipf("Skipping test due to store creation error: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, _ = kustoStore.SpanReader().FindTraces(ctx, query)
+
+	output := buf.String()
+
+	assert.Contains(t, output, "| where Duration < ParamDurationMax", 
+		"FindTraces should generate correct duration max condition with '<' operator")
+
+	assert.NotContains(t, output, "| where Duration > ParamDurationMax", 
+		"FindTraces should not generate incorrect duration max condition with '>' operator")
+}
+
+func TestFindTracesWithDurationMax(t *testing.T) {
+	query := &spanstore.TraceQueryParameters{
+		ServiceName:  "test-service",
+		StartTimeMin: time.Date(2023, time.January, 29, 06, 0, 0, 0, time.UTC),
+		StartTimeMax: time.Date(2023, time.January, 30, 23, 0, 0, 0, time.UTC),
+		DurationMax:  time.Millisecond * 500,
+		NumTraces:    10,
+	}
+
+	kustoConfig := &config.KustoConfig{
+		ClientID:       "test-client-id",
+		ClientSecret:   "test-client-secret",
+		TenantID:       "test-tenant-id",
+		Endpoint:       "https://test.kusto.windows.net",
+		Database:       "test-db",
+		TraceTableName: "OTELTraces",
+	}
+
+	var buf bytes.Buffer
+	logger := hclog.New(&hclog.LoggerOptions{
+		Output: &buf,
+		Level:  hclog.Debug,
+	})
+
+	kustoStore, err := store.NewStore(testPluginConfig, kustoConfig, logger)
+	if err != nil {
+		t.Skipf("Skipping test due to store creation error: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, _ = kustoStore.SpanReader().FindTraces(ctx, query)
+
+	output := buf.String()
+
+	assert.Contains(t, output, "| where Duration < ParamDurationMax", 
+		"FindTraces should generate correct duration max condition with '<' operator")
+
+	assert.NotContains(t, output, "| where Duration > ParamDurationMax", 
+		"FindTraces should not generate incorrect duration max condition with '>' operator")
+}
+
+func TestFindTracesWithBothDurationMinAndMax(t *testing.T) {
+	query := &spanstore.TraceQueryParameters{
+		ServiceName:  "test-service",
+		StartTimeMin: time.Date(2023, time.January, 29, 06, 0, 0, 0, time.UTC),
+		StartTimeMax: time.Date(2023, time.January, 30, 23, 0, 0, 0, time.UTC),
+		DurationMin:  time.Millisecond * 100,
+		DurationMax:  time.Millisecond * 500,
+		NumTraces:    10,
+	}
+
+	kustoConfig := &config.KustoConfig{
+		ClientID:       "test-client-id",
+		ClientSecret:   "test-client-secret",
+		TenantID:       "test-tenant-id",
+		Endpoint:       "https://test.kusto.windows.net",
+		Database:       "test-db",
+		TraceTableName: "OTELTraces",
+	}
+
+	var buf bytes.Buffer
+	logger := hclog.New(&hclog.LoggerOptions{
+		Output: &buf,
+		Level:  hclog.Debug,
+	})
+
+	kustoStore, err := store.NewStore(testPluginConfig, kustoConfig, logger)
+	if err != nil {
+		t.Skipf("Skipping test due to store creation error: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, _ = kustoStore.SpanReader().FindTraces(ctx, query)
+
+	output := buf.String()
+
+	assert.Contains(t, output, "| where Duration > ParamDurationMin", 
+		"FindTraces should generate correct duration min condition with '>' operator")
+	assert.Contains(t, output, "| where Duration < ParamDurationMax", 
+		"FindTraces should generate correct duration max condition with '<' operator")
+		
+	assert.NotContains(t, output, "| where Duration < ParamDurationMin", 
+		"FindTraces should not generate incorrect duration min condition")
+	assert.NotContains(t, output, "| where Duration > ParamDurationMax", 
+		"FindTraces should not generate incorrect duration max condition")
+}
+
