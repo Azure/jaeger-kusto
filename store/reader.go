@@ -232,6 +232,7 @@ func (r *kustoSpanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 		kustoParameters = kustoParameters.AddInt("ParamNumTraces", int32(query.NumTraces))
 	}
 
+	r.logger.Debug("FindTraceIDs query: %s", kustoStmt.String())
 	clientRequestId := GetClientId()
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId), kusto.QueryParameters(kustoParameters))...)
 	if err != nil {
@@ -322,7 +323,7 @@ func (r *kustoSpanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 	kustoStmt = kustoStmt.AddLiteral(` | where TraceID in (TraceIDs) | project-rename Tags=TraceAttributes,Logs=Events,ProcessTags=ResourceAttributes|extend References=iff(isempty(ParentID),todynamic("[]"),pack_array(bag_pack("refType","CHILD_OF","traceID",TraceID,"spanID",ParentID)))`)
 
-	r.logger.Debug(kustoStmt.String())
+	r.logger.Debug("FindTraces query: %s", kustoStmt.String())
 	clientRequestId := GetClientId()
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId), kusto.QueryParameters(kustoParameters))...)
 	if err != nil {
