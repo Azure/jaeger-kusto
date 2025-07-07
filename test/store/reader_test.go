@@ -67,6 +67,7 @@ func TestKustoSpanReader_GetServices(t *testing.T) {
 		t.Fail()
 	}
 	if err != nil {
+		logger.Error("can't get services", err.Error())
 		t.Logf("FAILED : TestKustoSpanReader_GetServices:  Error: %s", err.Error())
 		t.Fail()
 	}
@@ -87,6 +88,8 @@ func TestKustoSpanReader_GetOperations(t *testing.T) {
 	})
 	if err != nil {
 		logger.Error("can't get operations", err.Error())
+		t.Logf("FAILED : TestKustoSpanReader_GetOperations:  Error: %s", err.Error())
+		t.Fail()
 	}
 	output := strings.ReplaceAll(buf.String(), "\n", "")
 	if !strings.Contains(output, expectedOutput) {
