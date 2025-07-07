@@ -30,7 +30,6 @@ type kustoReaderClient interface {
 	Query(ctx context.Context, db string, query kusto.Statement, options ...kusto.QueryOption) (*kusto.RowIterator, error)
 }
 
-var queryMap = map[string]string{}
 
 func newKustoSpanReader(factory *kustoFactory, logger hclog.Logger, defaultReadOptions []kusto.QueryOption) (*kustoSpanReader, error) {
 	return &kustoSpanReader{
@@ -218,12 +217,12 @@ func (r *kustoSpanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 
 	if query.DurationMin != 0 {
 		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMin`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMin", query.DurationMin)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMin", query.DurationMin.Microseconds())
 	}
 
 	if query.DurationMax != 0 {
-		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMax`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMax", query.DurationMax)
+		kustoStmt = kustoStmt.AddLiteral(` | where Duration < ParamDurationMax`)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMax", query.DurationMax.Microseconds())
 	}
 
 	kustoStmt = kustoStmt.AddLiteral("| summarize by TraceID")
@@ -233,6 +232,7 @@ func (r *kustoSpanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 		kustoParameters = kustoParameters.AddInt("ParamNumTraces", int32(query.NumTraces))
 	}
 
+	r.logger.Debug("FindTraceIDs query: %s", kustoStmt.String())
 	clientRequestId := GetClientId()
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId), kusto.QueryParameters(kustoParameters))...)
 	if err != nil {
@@ -300,12 +300,12 @@ func (r *kustoSpanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 	if query.DurationMin != 0 {
 		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMin`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMin", query.DurationMin)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMin", query.DurationMin.Microseconds())
 	}
 
 	if query.DurationMax != 0 {
-		kustoStmt = kustoStmt.AddLiteral(` | where Duration > ParamDurationMax`)
-		kustoParameters = kustoParameters.AddTimespan("ParamDurationMax", query.DurationMax)
+		kustoStmt = kustoStmt.AddLiteral(` | where Duration < ParamDurationMax`)
+		kustoParameters = kustoParameters.AddLong("ParamDurationMax", query.DurationMax.Microseconds())
 	}
 
 	kustoStmt = kustoStmt.AddLiteral(" | summarize by TraceID")
@@ -314,7 +314,7 @@ func (r *kustoSpanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 	kustoParameters = kustoParameters.AddInt("ParamNumTraces", int32(query.NumTraces))
 
 	kustoStmt = kustoStmt.AddLiteral(`); `).AddTable(r.tableName).AddLiteral(getTracesBaseQuery)
-	
+
 	kustoStmt = kustoStmt.AddLiteral(` | where StartTime > ParamStartTimeMin`)
 	kustoParameters = kustoParameters.AddDateTime("ParamStartTimeMin", query.StartTimeMin)
 
@@ -323,7 +323,7 @@ func (r *kustoSpanReader) FindTraces(ctx context.Context, query *spanstore.Trace
 
 	kustoStmt = kustoStmt.AddLiteral(` | where TraceID in (TraceIDs) | project-rename Tags=TraceAttributes,Logs=Events,ProcessTags=ResourceAttributes|extend References=iff(isempty(ParentID),todynamic("[]"),pack_array(bag_pack("refType","CHILD_OF","traceID",TraceID,"spanID",ParentID)))`)
 
-	r.logger.Debug(kustoStmt.String())
+	r.logger.Debug("FindTraces query: %s", kustoStmt.String())
 	clientRequestId := GetClientId()
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId), kusto.QueryParameters(kustoParameters))...)
 	if err != nil {
