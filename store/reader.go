@@ -141,7 +141,7 @@ func (r *kustoSpanReader) GetOperations(ctx context.Context, query spanstore.Ope
 	if query.ServiceName != "" && query.SpanKind == "" {
 		kustoStmt := kql.New(queryResultsCacheAge).AddTable(r.tableName).AddLiteral(getOpsWithParamsQuery)
 		kustoStmtParams := kql.NewParameters().AddString("ParamProcessServiceName", query.ServiceName)
-
+		r.logger.Debug(kustoStmt.String())
 		iter, err = r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId), kusto.QueryParameters(kustoStmtParams))...)
 	}
 
@@ -233,6 +233,7 @@ func (r *kustoSpanReader) FindTraceIDs(ctx context.Context, query *spanstore.Tra
 
 	r.logger.Debug("FindTraceIDs query: %s", kustoStmt.String())
 	clientRequestId := GetClientId()
+	r.logger.Debug(kustoStmt.String())
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId), kusto.QueryParameters(kustoParameters))...)
 	if err != nil {
 		return nil, err
@@ -374,6 +375,7 @@ func (r *kustoSpanReader) GetDependencies(ctx context.Context, endTs time.Time, 
 	kustoStmt := kql.New(queryResultsCacheAge).AddTable(r.tableName).AddLiteral(getDependenciesQuery).AddTable(r.tableName).AddLiteral(getDependenciesJoinQuery)
 	kustoParams := kql.NewParameters().AddDateTime("ParamEndTs", endTs).AddTimespan("ParamLookBack", lookback)
 	clientRequestId := GetClientId()
+	r.logger.Debug(kustoStmt.String())
 	iter, err := r.client.Query(ctx, r.database, kustoStmt, append(r.defaultReadOptions, kusto.ClientRequestID(clientRequestId), kusto.QueryParameters(kustoParams))...)
 	if err != nil {
 		return nil, err
