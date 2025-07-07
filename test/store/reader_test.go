@@ -43,7 +43,7 @@ func TestKustoSpanReader_GetTrace(t *testing.T) {
 	kustoStore, kustoConfig, ctx, buf, logger := setupKustoStore(t)
 	expectedOutput := fmt.Sprintf(`%s | where TraceID == ParamTraceID | extend Duration=datetime_diff('microsecond',EndTime,StartTime) , ProcessServiceName=tostring(ResourceAttributes.['service.name']) | project-rename Tags=TraceAttributes,Logs=Events,ProcessTags=ResourceAttributes| extend References=iff(isempty(ParentID),todynamic("[]"),pack_array(bag_pack("refType","CHILD_OF","traceID",TraceID,"spanID",ParentID)))`, kustoConfig.TraceTableName)
 	trace, _ := model.TraceIDFromString("3f6d8f4c5008352055c14804949d1e57")
-	fulltrace, err := kustoStore.SpanReader().GetTrace(ctx, trace)
+	_, err := kustoStore.SpanReader().GetTrace(ctx, trace)
 	output := buf.String()
 
 	if !strings.Contains(output, expectedOutput) {
@@ -54,23 +54,22 @@ func TestKustoSpanReader_GetTrace(t *testing.T) {
 	if err != nil {
 		logger.Error("can't get trace", err.Error())
 	}
-	fmt.Printf("%+v\n", fulltrace)
 }
 
 func TestKustoSpanReader_GetServices(t *testing.T) {
 	kustoStore, kustoConfig, ctx, buf, logger := setupKustoStore(t)
 	expectedOutput := fmt.Sprintf(`set query_results_cache_max_age = time(5m);%s| extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | where ProcessServiceName!="" | summarize by ProcessServiceName 	| sort by ProcessServiceName asc`, kustoConfig.TraceTableName)
 	buf.Reset()
-	services, err := kustoStore.SpanReader().GetServices(ctx)
+	_, err := kustoStore.SpanReader().GetServices(ctx)
 	output := strings.ReplaceAll(buf.String(), "\n", "")
 	if !strings.Contains(output, expectedOutput) {
 		t.Logf("FAILED : TestKustoSpanReader_GetServices:  Wrong prepared query. Expected: %s, got: %s", expectedOutput, output)
 		t.Fail()
 	}
 	if err != nil {
-		logger.Error("can't get services", err.Error())
+		t.Logf("FAILED : TestKustoSpanReader_GetServices:  Error: %s", err.Error())
+		t.Fail()
 	}
-	logger.Trace("services", "services", services)
 }
 
 func TestKustoSpanReader_GetOperations(t *testing.T) {
