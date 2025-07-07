@@ -1,20 +1,11 @@
-//go:build integration
-// +build integration
-
 package store
 
 import (
 	"github.com/Azure/jaeger-kusto/config"
 )
 
-const (
-	testOperation = "testOperation"
-	testService   = "testService"
-)
-
 var (
 	testPluginConfig = NewTestPluginConfig()
-	logger           = config.NewLogger(testPluginConfig)
 )
 
 func NewTestPluginConfig() *config.PluginConfig {
