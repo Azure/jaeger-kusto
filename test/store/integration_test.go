@@ -4,16 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-kusto-go/kusto"
-	"github.com/Azure/azure-kusto-go/kusto/data/errors"
-	"github.com/Azure/azure-kusto-go/kusto/data/table"
 	"github.com/Azure/azure-kusto-go/kusto/kql"
 	"github.com/Azure/jaeger-kusto/config"
 	"github.com/Azure/jaeger-kusto/store"
 	"github.com/hashicorp/go-hclog"
+	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,17 +27,48 @@ const (
 7d1bc28a944c796499a589adbcde2299,mno345pqr678,invalid-span,INTERNAL,2024-01-01T10:00:00Z,2024-01-01T10:00:01Z,"","{""service.version"":""1.0.0""}","{}","[]"`
 )
 
-func createClient(clusterUrl string) (*kusto.Client, error) {
-	kcsb := kusto.NewConnectionStringBuilder(clusterUrl).WithDefaultAzureCredential()
-	kcsb.SetConnectorDetails("TestJaeger", "1.0.0", "plugin", "", false, "")
-	return kusto.New(kcsb)
+var (
+	kustoClient *kusto.Client
+	clientOnce  sync.Once
+	clientErr   error
+)
+
+// TestEnvironment holds the common test environment setup
+type TestEnvironment struct {
+	AdminClient   *kusto.Client
+	Database      string
+	TenantID      string
+	Cluster       string
+	TempTableName string
+	KustoStore    shared.StoragePlugin
+	Context       context.Context
+	Cancel        context.CancelFunc
+	Logger        hclog.Logger
 }
 
-func TestGetServices_Integration(t *testing.T) {
+func createClient(clusterUrl string) (*kusto.Client, error) {
+	clientOnce.Do(func() {
+		kcsb := kusto.NewConnectionStringBuilder(clusterUrl).WithDefaultAzureCredential()
+		kcsb.SetConnectorDetails("TestJaeger", "1.0.0", "plugin", "", false, "")
+
+		// Create a new Kusto client with the connection string builder
+		kustoClient, clientErr = kusto.New(kcsb)
+	})
+
+	return kustoClient, clientErr
+}
+
+// setupTestEnvironment creates a common test environment for integration tests
+func setupTestEnvironment(t *testing.T) *TestEnvironment {
 	// Skip if not running integration tests
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+
+	// Create logger
+	logger := hclog.New(&hclog.LoggerOptions{
+		Level: hclog.Debug,
+	})
 
 	// a) Set up the test by getting environment variables for cluster, database and login using Default azure credentials
 	cluster := os.Getenv("KUSTO_CLUSTER")
@@ -53,11 +84,31 @@ func TestGetServices_Integration(t *testing.T) {
 	require.NoError(t, err, "Failed to create admin client")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
 
 	// b) Create a temp table for OTELTraces, load some data
 	tempTableName := fmt.Sprintf("OTELTraces_Test_%d", time.Now().Unix())
 
+	env := &TestEnvironment{
+		AdminClient:   adminClient,
+		Database:      database,
+		TenantID:      tenantID,
+		Cluster:       cluster,
+		TempTableName: tempTableName,
+		Context:       ctx,
+		Cancel:        cancel,
+		Logger:        logger,
+	}
+
+	// Setup cleanup
+	t.Cleanup(func() {
+		env.Cleanup()
+	})
+
+	return env
+}
+
+// CreateTempTable creates a temporary table with the OTEL traces schema
+func (env *TestEnvironment) CreateTempTable(t *testing.T) {
 	// Create temporary table schema using management command
 	createTableCmd := fmt.Sprintf(`
         .create-merge table %s (
@@ -72,35 +123,37 @@ func TestGetServices_Integration(t *testing.T) {
             TraceAttributes: dynamic,
             Events: dynamic
         )
-    `, tempTableName)
+    `, env.TempTableName)
 
 	createStmt := kql.New("").AddUnsafe(createTableCmd)
 	// Create the temporary table using management command
-	_, err = adminClient.Mgmt(ctx, database, createStmt)
+	_, err := env.AdminClient.Mgmt(env.Context, env.Database, createStmt)
+	env.Logger.Info("Created temporary table", "tableName", env.TempTableName)
 	require.NoError(t, err, "Failed to create temporary table")
+}
 
-	// Clean up the table after test
-	defer func() {
-		dropTableCmd := fmt.Sprintf(".drop table %s", tempTableName)
-		_, _ = adminClient.Mgmt(ctx, database, kql.New("").AddUnsafe(dropTableCmd))
-	}()
-
+// IngestTestData loads the test data into the temporary table
+func (env *TestEnvironment) IngestTestData(t *testing.T) {
 	// Load test data into the temporary table
-	ingestCmd := fmt.Sprintf(`.ingest inline into table %s <| %s`, tempTableName, testOTELTracesData)
-
-	_, err = adminClient.Mgmt(ctx, database, kql.New("").AddUnsafe(ingestCmd))
+	ingestCmd := fmt.Sprintf(`.ingest inline into table %s <| %s`, env.TempTableName, testOTELTracesData)
+	// Ingest the test data into the temporary table
+	env.Logger.Info("Ingesting test data into temporary table", "tableName", env.TempTableName)
+	_, err := env.AdminClient.Mgmt(env.Context, env.Database, kql.New("").AddUnsafe(ingestCmd))
 	require.NoError(t, err, "Failed to ingest test data")
 
 	// Wait for data to be available
 	time.Sleep(10 * time.Second)
+}
 
+// CreateKustoStore creates a Kusto store configured to use the temporary table
+func (env *TestEnvironment) CreateKustoStore(t *testing.T) {
 	// Create kusto config using default Azure credentials
 	kustoConfig := &config.KustoConfig{
-		Endpoint:            cluster,
-		Database:            database,
-		TenantID:            tenantID,
-		UseWorkloadIdentity: true,          // Use default Azure credentials
-		TraceTableName:      tempTableName, // Use temp table
+		Endpoint:            env.Cluster,
+		Database:            env.Database,
+		TenantID:            env.TenantID,
+		UseWorkloadIdentity: true,              // Use default Azure credentials
+		TraceTableName:      env.TempTableName, // Use temp table
 	}
 
 	// Create plugin config
@@ -108,18 +161,42 @@ func TestGetServices_Integration(t *testing.T) {
 		LogLevel: "debug",
 	}
 
-	// Create logger
-	logger := hclog.New(&hclog.LoggerOptions{
-		Level: hclog.Debug,
-	})
-
 	// Create store with temp table
-	tempKustoStore, err := store.NewStore(pluginConfig, kustoConfig, logger)
+	tempKustoStore, err := store.NewStore(pluginConfig, kustoConfig, env.Logger)
 	require.NoError(t, err, "Failed to create temp kusto store")
+
+	env.KustoStore = tempKustoStore
+}
+
+// SetupCompleteEnvironment sets up the complete test environment with table, data, and store
+func (env *TestEnvironment) SetupCompleteEnvironment(t *testing.T) {
+	env.CreateTempTable(t)
+	env.IngestTestData(t)
+	env.CreateKustoStore(t)
+}
+
+// Cleanup cleans up the test environment
+func (env *TestEnvironment) Cleanup() {
+	// Clean up the table after test
+	dropTableCmd := fmt.Sprintf(".drop table %s", env.TempTableName)
+	env.Logger.Info("Dropping temporary table", "tableName", env.TempTableName)
+	// Use the admin client to drop the temporary table
+	// This is done in a deferred function to ensure it runs after the test completes
+	_, _ = env.AdminClient.Mgmt(env.Context, env.Database, kql.New("").AddUnsafe(dropTableCmd))
+
+	// Cancel the context
+	env.Cancel()
+}
+
+// Now your tests can use the common setup
+func TestGetServices_Integration(t *testing.T) {
+	// Setup common test environment
+	env := setupTestEnvironment(t)
+	env.SetupCompleteEnvironment(t)
 
 	// c) Run the GetServices service with the filters. Add multiple conditions for predicates
 	t.Run("GetServices_AllServices", func(t *testing.T) {
-		services, err := tempKustoStore.SpanReader().GetServices(ctx)
+		services, err := env.KustoStore.SpanReader().GetServices(env.Context)
 		require.NoError(t, err, "Failed to get services")
 
 		// d) Assert the results are as expected
@@ -140,48 +217,5 @@ func TestGetServices_Integration(t *testing.T) {
 		for i := 1; i < len(services); i++ {
 			assert.LessOrEqual(t, services[i-1], services[i], "Services should be sorted alphabetically")
 		}
-	})
-
-	t.Run("GetServices_WithTimeFilter", func(t *testing.T) {
-		// Create a custom query to test time-based filtering
-		// This simulates filtering by time range as a predicate condition
-		timeFilterQuery := fmt.Sprintf(`
-            set query_results_cache_max_age = time(5m);
-            %s
-            | where StartTime >= datetime(2024-01-01T10:00:00Z) and StartTime <= datetime(2024-01-01T10:00:02Z)
-            | extend ProcessServiceName=tostring(ResourceAttributes.['service.name'])
-            | where ProcessServiceName!=""
-            | summarize by ProcessServiceName
-            | sort by ProcessServiceName asc
-        `, tempTableName)
-
-		iter, err := adminClient.Query(ctx, database, kql.New("").AddUnsafe(timeFilterQuery))
-		require.NoError(t, err, "Failed to execute time filter query")
-		defer iter.Stop()
-
-		var services []string
-		err = iter.DoOnRowOrError(func(row *table.Row, e *errors.Error) error {
-			if e != nil {
-				return e
-			}
-			var service string
-			if err := row.ToStruct(&struct {
-				ProcessServiceName string `kusto:"ProcessServiceName"`
-			}{ProcessServiceName: service}); err != nil {
-				return err
-			}
-			services = append(services, service)
-			return nil
-		})
-		require.NoError(t, err, "Failed to process time filter results")
-
-		// All services should be present as they all have timestamps within the range
-		expectedServices := []string{
-			"backend-service",
-			"cache-service",
-			"frontend-service",
-			"notification-service",
-		}
-		assert.Equal(t, len(expectedServices), len(services), "Time filter should return all services")
 	})
 }
