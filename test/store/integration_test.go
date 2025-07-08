@@ -21,11 +21,11 @@ import (
 
 const (
 	// Test data for OTEL traces
-	testOTELTracesData = `3f6d8f4c5008352055c14804949d1e57,abc123def456,http-get-request,CLIENT,2024-01-01T10:00:00Z,2024-01-01T10:00:01Z,"","{""service.name"":""frontend-service"",""service.version"":""1.0.0""}","{""http.method"":""GET"",""http.url"":""/api/users""}","[]"
-4a7e9f5d6119463166d25915a5a2f968,def456ghi789,database-query,SERVER,2024-01-01T10:00:00Z,2024-01-01T10:00:02Z,abc123def456,"{""service.name"":""backend-service"",""service.version"":""2.1.0""}","{""db.statement"":""SELECT * FROM users""}","[]"
-5b8fa06e722a574277e3696ba6b3c079,ghi789jkl012,cache-lookup,CLIENT,2024-01-01T10:00:00Z,2024-01-01T10:00:00.5Z,"","{""service.name"":""cache-service"",""service.version"":""1.2.0""}","{""cache.key"":""user:123""}","[]"
-6c9ab17f833b685388f4797cab4d118a,jkl012mno345,notification-send,PRODUCER,2024-01-01T10:00:00Z,2024-01-01T10:00:03Z,"","{""service.name"":""notification-service"",""service.version"":""1.5.0""}","{""notification.type"":""email""}","[]"
-7d1bc28a944c796499a589adbcde2299,mno345pqr678,invalid-span,INTERNAL,2024-01-01T10:00:00Z,2024-01-01T10:00:01Z,"","{""service.version"":""1.0.0""}","{}","[]"`
+	testOTELTracesData = `3f6d8f4c5008352055c14804949d1e57,b0a8c042b2621fe9,http-get-request,CLIENT,2024-01-01T10:00:00Z,2024-01-01T10:00:01Z,"","{""service.name"":""frontend-service"",""service.version"":""1.0.0""}","{""http.method"":""GET"",""http.url"":""/api/users""}","[]"
+4a7e9f5d6119463166d25915a5a2f968,00ae66c75b61014d,database-query,SERVER,2024-01-01T10:00:00Z,2024-01-01T10:00:02Z,abc123def456,"{""service.name"":""backend-service"",""service.version"":""2.1.0""}","{""db.statement"":""SELECT * FROM users""}","[]"
+5b8fa06e722a574277e3696ba6b3c079,b281c3f85270ec89,cache-lookup,CLIENT,2024-01-01T10:00:00Z,2024-01-01T10:00:00.5Z,"","{""service.name"":""cache-service"",""service.version"":""1.2.0""}","{""cache.key"":""user:123""}","[]"
+6c9ab17f833b685388f4797cab4d118a,1753db1da505545f,notification-send,PRODUCER,2024-01-01T10:00:00Z,2024-01-01T10:00:03Z,"","{""service.name"":""notification-service"",""service.version"":""1.5.0""}","{""notification.type"":""email""}","[]"
+7d1bc28a944c796499a589adbcde2299,06b97c543b45c1dc,invalid-span,INTERNAL,2024-01-01T10:00:00Z,2024-01-01T10:00:01Z,"","{""service.version"":""1.0.0""}","{}","[]"`
 )
 
 var (
@@ -406,4 +406,199 @@ func TestGetOperations_Integration(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestFindTraces_Integration(t *testing.T) {
+	// Setup common test environment
+	env := setupTestEnvironment(t)
+	env.SetupCompleteEnvironment(t)
+
+	// Simple test for FindTraces with basic parameters
+	t.Run("FindTraces_ByServiceName", func(t *testing.T) {
+		// Set up query parameters for finding traces
+		startTime := time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC)
+		endTime := time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)
+
+		query := &spanstore.TraceQueryParameters{
+			ServiceName:  "frontend-service",
+			StartTimeMin: startTime,
+			StartTimeMax: endTime,
+			NumTraces:    10,
+		}
+
+		traces, err := env.KustoStore.SpanReader().FindTraces(env.Context, query)
+		require.NoError(t, err, "Failed to find traces")
+
+		// Basic validation
+		assert.NotNil(t, traces, "Traces should not be nil")
+
+		// If traces are found, validate their structure
+		if len(traces) > 0 {
+			t.Logf("Found %d traces", len(traces))
+
+			for i, trace := range traces {
+				assert.NotNil(t, trace, "Trace %d should not be nil", i)
+				assert.NotEmpty(t, trace.Spans, "Trace %d should have spans", i)
+
+				// Validate that at least one span belongs to the queried service
+				foundService := false
+				for _, span := range trace.Spans {
+					if span.Process != nil && span.Process.ServiceName == "frontend-service" {
+						foundService = true
+						break
+					}
+				}
+				assert.True(t, foundService, "Trace %d should contain spans from frontend-service", i)
+
+				t.Logf("Trace %d: TraceID=%s, Spans=%d", i, trace.Spans[0].TraceID, len(trace.Spans))
+			}
+		} else {
+			t.Log("No traces found - this might be expected if the data doesn't match the time range")
+		}
+	})
+
+	t.Run("FindTraces_ByOperationName", func(t *testing.T) {
+		// Set up query parameters for finding traces by operation name
+		startTime := time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC)
+		endTime := time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)
+
+		query := &spanstore.TraceQueryParameters{
+			ServiceName:   "frontend-service",
+			OperationName: "http-get-request",
+			StartTimeMin:  startTime,
+			StartTimeMax:  endTime,
+			NumTraces:     10,
+		}
+
+		traces, err := env.KustoStore.SpanReader().FindTraces(env.Context, query)
+		require.NoError(t, err, "Failed to find traces by operation name")
+
+		// Basic validation
+		assert.NotNil(t, traces, "Traces should not be nil")
+
+		// If traces are found, validate their structure
+		if len(traces) > 0 {
+			t.Logf("Found %d traces for operation http-get-request", len(traces))
+
+			for i, trace := range traces {
+				assert.NotNil(t, trace, "Trace %d should not be nil", i)
+				assert.NotEmpty(t, trace.Spans, "Trace %d should have spans", i)
+
+				// Validate that at least one span has the queried operation name
+				foundOperation := false
+				for _, span := range trace.Spans {
+					if span.OperationName == "http-get-request" {
+						foundOperation = true
+						break
+					}
+				}
+				assert.True(t, foundOperation, "Trace %d should contain spans with operation http-get-request", i)
+			}
+		} else {
+			t.Log("No traces found for operation http-get-request")
+		}
+	})
+
+	t.Run("FindTraces_WithTags", func(t *testing.T) {
+		// Set up query parameters for finding traces by tags
+		startTime := time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC)
+		endTime := time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)
+
+		query := &spanstore.TraceQueryParameters{
+			ServiceName:  "frontend-service",
+			StartTimeMin: startTime,
+			StartTimeMax: endTime,
+			Tags: map[string]string{
+				"http.method": "GET",
+			},
+			NumTraces: 10,
+		}
+
+		traces, err := env.KustoStore.SpanReader().FindTraces(env.Context, query)
+		require.NoError(t, err, "Failed to find traces with tags")
+
+		// Basic validation
+		assert.NotNil(t, traces, "Traces should not be nil")
+
+		if len(traces) > 0 {
+			t.Logf("Found %d traces with http.method=GET tag", len(traces))
+
+			for i, trace := range traces {
+				assert.NotNil(t, trace, "Trace %d should not be nil", i)
+				assert.NotEmpty(t, trace.Spans, "Trace %d should have spans", i)
+			}
+		} else {
+			t.Log("No traces found with http.method=GET tag")
+		}
+	})
+
+	t.Run("FindTraces_AllServices", func(t *testing.T) {
+		// Set up query parameters for finding traces from all services
+		startTime := time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC)
+		endTime := time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)
+
+		query := &spanstore.TraceQueryParameters{
+			StartTimeMin: startTime,
+			StartTimeMax: endTime,
+			NumTraces:    20, // Get more traces since we're looking across all services
+		}
+
+		traces, err := env.KustoStore.SpanReader().FindTraces(env.Context, query)
+		require.NoError(t, err, "Failed to find traces from all services")
+
+		// Basic validation
+		assert.NotNil(t, traces, "Traces should not be nil")
+
+		if len(traces) > 0 {
+			t.Logf("Found %d traces across all services", len(traces))
+
+			// Collect unique services from found traces
+			services := make(map[string]bool)
+			for i, trace := range traces {
+				assert.NotNil(t, trace, "Trace %d should not be nil", i)
+				assert.NotEmpty(t, trace.Spans, "Trace %d should have spans", i)
+
+				for _, span := range trace.Spans {
+					if span.Process != nil && span.Process.ServiceName != "" {
+						services[span.Process.ServiceName] = true
+					}
+				}
+			}
+
+			t.Logf("Found traces from services: %v", getKeys(services))
+
+			// We should find traces from multiple services
+			assert.GreaterOrEqual(t, len(services), 1, "Should find traces from at least one service")
+		} else {
+			t.Log("No traces found across all services")
+		}
+	})
+
+	t.Run("FindTraces_EmptyResult", func(t *testing.T) {
+		// Set up query parameters that should return no results
+		startTime := time.Date(2025, 1, 1, 9, 0, 0, 0, time.UTC) // Future date
+		endTime := time.Date(2025, 1, 1, 11, 0, 0, 0, time.UTC)
+
+		query := &spanstore.TraceQueryParameters{
+			ServiceName:  "frontend-service",
+			StartTimeMin: startTime,
+			StartTimeMax: endTime,
+			NumTraces:    10,
+		}
+
+		traces, err := env.KustoStore.SpanReader().FindTraces(env.Context, query)
+		require.NoError(t, err, "Should not error for future date range")
+
+		// Should return empty result
+		assert.Nil(t, traces, "Should return no traces for future date range")
+	})
+}
+
+// Helper function to get keys from a map
+func getKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

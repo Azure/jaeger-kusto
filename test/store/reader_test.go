@@ -95,14 +95,11 @@ func TestKustoSpanReader_GetOperations(t *testing.T) {
 	}
 }
 
-func TestFindTraces(t *testing.T) {
+func TestKustoSpanReader_FindTraces(t *testing.T) {
 	kustoStore, kustoConfig, ctx, buf, logger := setupKustoStore(t)
 	// Reset the buffer for a clean output
 	expectedOutput := fmt.Sprintf(`let TraceIDs = (%s | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']),Duration=datetime_diff('microsecond',EndTime,StartTime) | where ProcessServiceName == ParamProcessServiceName | where TraceAttributes['http_method'] == 'GET' or ResourceAttributes['http_method'] == 'GET' | where StartTime > ParamStartTimeMin | where StartTime < ParamStartTimeMax | summarize by TraceID | sample ParamNumTraces); %s | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']),Duration=datetime_diff('microsecond',EndTime,StartTime) | where StartTime > ParamStartTimeMin | where StartTime < ParamStartTimeMax | where TraceID in (TraceIDs) | project-rename Tags=TraceAttributes,Logs=Events,ProcessTags=ResourceAttributes|extend References=iff(isempty(ParentID),todynamic("[]"),pack_array(bag_pack("refType","CHILD_OF","traceID",TraceID,"spanID",ParentID)))`, kustoConfig.TraceTableName, kustoConfig.TraceTableName)
 	buf.Reset()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	// Example query parameters
 	query := spanstore.TraceQueryParameters{
 		ServiceName:   "my-service",
@@ -137,13 +134,13 @@ func TestStore_DependencyReader(t *testing.T) {
 	_, err := kustoStore.DependencyReader().GetDependencies(ctx, time.Now(), 168*time.Hour)
 	if err != nil {
 		logger.Error("can't find traces", err.Error())
-		t.Logf("FAILED : TestKustoSpanReader_FindTraces:  Error: %s", err.Error())
+		t.Logf("FAILED : TestStore_DependencyReader:  Error: %s", err.Error())
 		t.Fail()
 	}
 	output := strings.ReplaceAll(buf.String(), "\n", "")
 
 	if !strings.Contains(output, expectedOutput) {
-		t.Logf("FAILED : TestKustoSpanReader_FindTraces:  Wrong prepared query. Expected: %s, got: %s", expectedOutput, output)
+		t.Logf("FAILED : TestStore_DependencyReader:  Wrong prepared query. Expected: %s, got: %s", expectedOutput, output)
 		t.Fail()
 	}
 }
