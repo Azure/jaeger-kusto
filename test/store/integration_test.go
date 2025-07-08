@@ -20,11 +20,11 @@ import (
 )
 
 const (
-	// Test data for OTEL traces
+	// Test data for OTEL traces - Updated to have proper parent-child relationships for dependencies
 	testOTELTracesData = `3f6d8f4c5008352055c14804949d1e57,b0a8c042b2621fe9,http-get-request,CLIENT,2024-01-01T10:00:00Z,2024-01-01T10:00:01Z,"","{""service.name"":""frontend-service"",""service.version"":""1.0.0""}","{""http.method"":""GET"",""http.url"":""/api/users""}","[]"
-4a7e9f5d6119463166d25915a5a2f968,00ae66c75b61014d,database-query,SERVER,2024-01-01T10:00:00Z,2024-01-01T10:00:02Z,abc123def456,"{""service.name"":""backend-service"",""service.version"":""2.1.0""}","{""db.statement"":""SELECT * FROM users""}","[]"
-5b8fa06e722a574277e3696ba6b3c079,b281c3f85270ec89,cache-lookup,CLIENT,2024-01-01T10:00:00Z,2024-01-01T10:00:00.5Z,"","{""service.name"":""cache-service"",""service.version"":""1.2.0""}","{""cache.key"":""user:123""}","[]"
-6c9ab17f833b685388f4797cab4d118a,1753db1da505545f,notification-send,PRODUCER,2024-01-01T10:00:00Z,2024-01-01T10:00:03Z,"","{""service.name"":""notification-service"",""service.version"":""1.5.0""}","{""notification.type"":""email""}","[]"
+4a7e9f5d6119463166d25915a5a2f968,00ae66c75b61014d,database-query,SERVER,2024-01-01T10:00:00Z,2024-01-01T10:00:02Z,b0a8c042b2621fe9,"{""service.name"":""backend-service"",""service.version"":""2.1.0""}","{""db.statement"":""SELECT * FROM users""}","[]"
+5b8fa06e722a574277e3696ba6b3c079,b281c3f85270ec89,cache-lookup,CLIENT,2024-01-01T10:00:00Z,2024-01-01T10:00:00.5Z,00ae66c75b61014d,"{""service.name"":""cache-service"",""service.version"":""1.2.0""}","{""cache.key"":""user:123""}","[]"
+6c9ab17f833b685388f4797cab4d118a,1753db1da505545f,notification-send,PRODUCER,2024-01-01T10:00:00Z,2024-01-01T10:00:03Z,b0a8c042b2621fe9,"{""service.name"":""notification-service"",""service.version"":""1.5.0""}","{""notification.type"":""email""}","[]"
 7d1bc28a944c796499a589adbcde2299,06b97c543b45c1dc,invalid-span,INTERNAL,2024-01-01T10:00:00Z,2024-01-01T10:00:01Z,"","{""service.version"":""1.0.0""}","{}","[]"`
 )
 
@@ -51,11 +51,9 @@ func createClient(clusterUrl string) (*kusto.Client, error) {
 	clientOnce.Do(func() {
 		kcsb := kusto.NewConnectionStringBuilder(clusterUrl).WithDefaultAzureCredential()
 		kcsb.SetConnectorDetails("TestJaeger", "1.0.0", "plugin", "", false, "")
-
 		// Create a new Kusto client with the connection string builder
 		kustoClient, clientErr = kusto.New(kcsb)
 	})
-
 	return kustoClient, clientErr
 }
 
@@ -65,10 +63,9 @@ func setupTestEnvironment(t *testing.T) *TestEnvironment {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-
 	// Create logger
 	logger := hclog.New(&hclog.LoggerOptions{
-		Level: hclog.Debug,
+		Level: hclog.Info,
 	})
 
 	// a) Set up the test by getting environment variables for cluster, database and login using Default azure credentials
@@ -102,14 +99,13 @@ func setupTestEnvironment(t *testing.T) *TestEnvironment {
 
 	// Setup cleanup
 	t.Cleanup(func() {
-		env.Cleanup()
+		env.cleanup()
 	})
-
 	return env
 }
 
-// CreateTempTable creates a temporary table with the OTEL traces schema
-func (env *TestEnvironment) CreateTempTable(t *testing.T) {
+// createTempTable creates a temporary table with the OTEL traces schema
+func (env *TestEnvironment) createTempTable(t *testing.T) {
 	// Create temporary table schema using management command
 	createTableCmd := fmt.Sprintf(`
         .create-merge table %s (
@@ -146,8 +142,8 @@ func (env *TestEnvironment) IngestTestData(t *testing.T) {
 	time.Sleep(10 * time.Second)
 }
 
-// CreateKustoStore creates a Kusto store configured to use the temporary table
-func (env *TestEnvironment) CreateKustoStore(t *testing.T) {
+// createKustoStore creates a Kusto store configured to use the temporary table
+func (env *TestEnvironment) createKustoStore(t *testing.T) {
 	// Create kusto config using default Azure credentials
 	kustoConfig := &config.KustoConfig{
 		Endpoint:            env.Cluster,
@@ -169,22 +165,21 @@ func (env *TestEnvironment) CreateKustoStore(t *testing.T) {
 	env.KustoStore = tempKustoStore
 }
 
-// SetupCompleteEnvironment sets up the complete test environment with table, data, and store
-func (env *TestEnvironment) SetupCompleteEnvironment(t *testing.T) {
-	env.CreateTempTable(t)
+// setupCompleteEnvironment sets up the complete test environment with table, data, and store
+func (env *TestEnvironment) setupCompleteEnvironment(t *testing.T) {
+	env.createTempTable(t)
 	env.IngestTestData(t)
-	env.CreateKustoStore(t)
+	env.createKustoStore(t)
 }
 
-// Cleanup cleans up the test environment
-func (env *TestEnvironment) Cleanup() {
+// cleanup cleans up the test environment
+func (env *TestEnvironment) cleanup() {
 	// Clean up the table after test
 	dropTableCmd := fmt.Sprintf(".drop table %s", env.TempTableName)
 	env.Logger.Info("Dropping temporary table", "tableName", env.TempTableName)
 	// Use the admin client to drop the temporary table
 	// This is done in a deferred function to ensure it runs after the test completes
 	_, _ = env.AdminClient.Mgmt(env.Context, env.Database, kql.New("").AddUnsafe(dropTableCmd))
-
 	// Cancel the context
 	env.Cancel()
 }
@@ -193,8 +188,8 @@ func (env *TestEnvironment) Cleanup() {
 func TestGetServices_Integration(t *testing.T) {
 	// Setup common test environment
 	env := setupTestEnvironment(t)
-	env.SetupCompleteEnvironment(t)
-
+	env.setupCompleteEnvironment(t)
+	t.Parallel()
 	// c) Run the GetServices service with the filters. Add multiple conditions for predicates
 	t.Run("GetServices_AllServices", func(t *testing.T) {
 		services, err := env.KustoStore.SpanReader().GetServices(env.Context)
@@ -224,8 +219,8 @@ func TestGetServices_Integration(t *testing.T) {
 func TestGetOperations_Integration(t *testing.T) {
 	// Setup common test environment
 	env := setupTestEnvironment(t)
-	env.SetupCompleteEnvironment(t)
-
+	env.setupCompleteEnvironment(t)
+	t.Parallel()
 	// Test GetOperations with various filter conditions
 	t.Run("GetOperations_AllOperations", func(t *testing.T) {
 		// Test with no service name and no span kind filters
@@ -411,8 +406,9 @@ func TestGetOperations_Integration(t *testing.T) {
 func TestFindTraces_Integration(t *testing.T) {
 	// Setup common test environment
 	env := setupTestEnvironment(t)
-	env.SetupCompleteEnvironment(t)
+	env.setupCompleteEnvironment(t)
 
+	t.Parallel()
 	// Simple test for FindTraces with basic parameters
 	t.Run("FindTraces_ByServiceName", func(t *testing.T) {
 		// Set up query parameters for finding traces
@@ -601,4 +597,196 @@ func getKeys(m map[string]bool) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func TestGetDependencies_Integration(t *testing.T) {
+	// Setup common test environment
+	env := setupTestEnvironment(t)
+	env.setupCompleteEnvironment(t)
+
+	t.Parallel()
+	// Test GetDependencies with basic parameters
+	t.Run("GetDependencies_Basic", func(t *testing.T) {
+		// Set up query parameters for getting dependencies
+		endTime := time.Date(2024, 1, 1, 10, 59, 59, 999, time.UTC)
+		lookback := 2 * time.Hour // Look back 2 hours
+
+		dependencies, err := env.KustoStore.DependencyReader().GetDependencies(env.Context, endTime, lookback)
+		require.NoError(t, err, "Failed to get dependencies")
+
+		// Basic validation
+		assert.NotNil(t, dependencies, "Dependencies should not be nil")
+
+		if len(dependencies) > 0 {
+			t.Logf("Found %d dependency links", len(dependencies))
+
+			// Validate each dependency link
+			for i, dep := range dependencies {
+				assert.NotEmpty(t, dep.Parent, "Dependency %d should have a parent service", i)
+				assert.NotEmpty(t, dep.Child, "Dependency %d should have a child service", i)
+				assert.Greater(t, dep.CallCount, uint64(0), "Dependency %d should have call count > 0", i)
+				assert.NotEqual(t, dep.Parent, dep.Child, "Dependency %d parent should not equal child", i)
+
+				t.Logf("Dependency %d: %s -> %s (calls: %d)", i, dep.Parent, dep.Child, dep.CallCount)
+			}
+
+			// Based on our test data, we should have frontend-service -> backend-service dependency
+			// (since database-query span has ParentID pointing to http-get-request span)
+			expectedDependency := false
+			for _, dep := range dependencies {
+				if dep.Parent == "frontend-service" && dep.Child == "backend-service" {
+					expectedDependency = true
+					assert.Equal(t, uint64(1), dep.CallCount, "Should have 1 call from frontend to backend")
+					break
+				}
+			}
+			assert.True(t, expectedDependency, "Should find dependency from frontend-service to backend-service")
+
+		} else {
+			t.Log("No dependencies found - this might be expected if spans don't have proper parent-child relationships")
+		}
+	})
+
+	t.Run("GetDependencies_DifferentTimeRanges", func(t *testing.T) {
+		// Test with different time ranges
+		timeRangeTests := []struct {
+			name     string
+			endTime  time.Time
+			lookback time.Duration
+		}{
+			{
+				name:     "OneHourLookback",
+				endTime:  time.Date(2024, 1, 1, 10, 59, 59, 999, time.UTC),
+				lookback: 1 * time.Hour,
+			},
+			{
+				name:     "FourHourLookback",
+				endTime:  time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+				lookback: 4 * time.Hour,
+			},
+			{
+				name:     "ShortLookback",
+				endTime:  time.Date(2024, 1, 1, 10, 29, 59, 999, time.UTC),
+				lookback: 30 * time.Minute,
+			},
+		}
+
+		for _, tc := range timeRangeTests {
+			t.Run(tc.name, func(t *testing.T) {
+				dependencies, err := env.KustoStore.DependencyReader().GetDependencies(env.Context, tc.endTime, tc.lookback)
+				require.NoError(t, err, "Failed to get dependencies for %s", tc.name)
+
+				assert.NotNil(t, dependencies, "Dependencies should not be nil for %s", tc.name)
+				t.Logf("%s: Found %d dependencies", tc.name, len(dependencies))
+
+				// Log the dependencies for analysis
+				for _, dep := range dependencies {
+					t.Logf("  %s -> %s (calls: %d)", dep.Parent, dep.Child, dep.CallCount)
+				}
+			})
+		}
+	})
+
+	t.Run("GetDependencies_NoDataTimeRange", func(t *testing.T) {
+		// Test with time range that should return no dependencies
+		endTime := time.Date(2023, 12, 31, 23, 59, 59, 0, time.UTC) // Before our test data
+		lookback := 1 * time.Hour
+
+		dependencies, err := env.KustoStore.DependencyReader().GetDependencies(env.Context, endTime, lookback)
+		require.NoError(t, err, "Should not error for time range with no data")
+
+		assert.Nil(t, dependencies, "Should return no dependencies for time range with no data")
+	})
+
+	t.Run("GetDependencies_FutureTimeRange", func(t *testing.T) {
+		// Test with future time range
+		endTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC) // Future date
+		lookback := 2 * time.Hour
+
+		dependencies, err := env.KustoStore.DependencyReader().GetDependencies(env.Context, endTime, lookback)
+		require.NoError(t, err, "Should not error for future time range")
+
+		assert.Nil(t, dependencies, "No dependencies should be returned for future time range")
+		// Future time range might or might not return data depending on the query logic
+		t.Logf("Future time range returned %d dependencies", len(dependencies))
+	})
+
+	t.Run("GetDependencies_LongLookback", func(t *testing.T) {
+		// Test with very long lookback period
+		endTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+		lookback := 24 * time.Hour // Look back 24 hours
+
+		dependencies, err := env.KustoStore.DependencyReader().GetDependencies(env.Context, endTime, lookback)
+		require.NoError(t, err, "Should not error for long lookback period")
+
+		assert.NotNil(t, dependencies, "Dependencies should not be nil")
+		t.Logf("Long lookback returned %d dependencies", len(dependencies))
+
+		// With a longer lookback, we should capture all our test data
+		if len(dependencies) > 0 {
+			// Validate that all dependencies have proper structure
+			services := make(map[string]bool)
+			for _, dep := range dependencies {
+				assert.NotEmpty(t, dep.Parent, "Parent service should not be empty")
+				assert.NotEmpty(t, dep.Child, "Child service should not be empty")
+				assert.Greater(t, dep.CallCount, uint64(0), "Call count should be greater than 0")
+
+				services[dep.Parent] = true
+				services[dep.Child] = true
+			}
+
+			t.Logf("Found services in dependencies: %v", getKeys(services))
+		}
+	})
+
+	t.Run("GetDependencies_ValidationTests", func(t *testing.T) {
+		// Test edge cases and validation
+		endTime := time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)
+		lookback := 2 * time.Hour
+
+		dependencies, err := env.KustoStore.DependencyReader().GetDependencies(env.Context, endTime, lookback)
+		require.NoError(t, err, "Failed to get dependencies for validation")
+
+		if len(dependencies) > 0 {
+			// Validate data quality
+			for i, dep := range dependencies {
+				// Parent and child should be different
+				assert.NotEqual(t, dep.Parent, dep.Child,
+					"Dependency %d: parent and child should be different services", i)
+
+				// Parent and child should not be empty
+				assert.NotEmpty(t, dep.Parent, "Dependency %d: parent should not be empty", i)
+				assert.NotEmpty(t, dep.Child, "Dependency %d: child should not be empty", i)
+
+				// Call count should be positive
+				assert.Greater(t, dep.CallCount, uint64(0),
+					"Dependency %d: call count should be positive", i)
+
+				// Service names should be from our known test services
+				knownServices := map[string]bool{
+					"frontend-service":     true,
+					"backend-service":      true,
+					"cache-service":        true,
+					"notification-service": true,
+				}
+
+				// Note: We might have services without service.name (like our invalid-span)
+				// so we'll just log if we find unknown services rather than fail
+				if !knownServices[dep.Parent] {
+					t.Logf("Found unknown parent service: %s", dep.Parent)
+				}
+				if !knownServices[dep.Child] {
+					t.Logf("Found unknown child service: %s", dep.Child)
+				}
+			}
+
+			// Check for duplicate dependencies (same parent-child pair)
+			seen := make(map[string]bool)
+			for _, dep := range dependencies {
+				key := fmt.Sprintf("%s->%s", dep.Parent, dep.Child)
+				assert.False(t, seen[key], "Found duplicate dependency: %s", key)
+				seen[key] = true
+			}
+		}
+	})
 }

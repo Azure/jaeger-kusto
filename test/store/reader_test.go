@@ -17,6 +17,19 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 )
 
+var (
+	testPluginConfig = newTestPluginConfig()
+)
+
+func newTestPluginConfig() *config.PluginConfig {
+	pc := config.NewDefaultPluginConfig()
+	// override values for testing purpose
+	pc.KustoConfigPath = "jaeger-kusto-config.json"
+	pc.LogLevel = "debug"
+	pc.WriterWorkersCount = 1
+	return pc
+}
+
 func setupKustoStore(t *testing.T) (shared.StoragePlugin, *config.KustoConfig, context.Context, *bytes.Buffer, hclog.Logger) {
 	kustoConfig, err := config.ParseKustoConfig(testPluginConfig.KustoConfigPath, testPluginConfig.ReadNoTruncation, testPluginConfig.ReadNoTimeout)
 	var buf bytes.Buffer
@@ -129,7 +142,7 @@ func TestKustoSpanReader_FindTraces(t *testing.T) {
 
 func TestStore_DependencyReader(t *testing.T) {
 	kustoStore, kustoConfig, ctx, buf, logger := setupKustoStore(t)
-	expectedOutput := fmt.Sprintf(`set query_results_cache_max_age = time(5m);%s | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | where StartTime < ParamEndTs and StartTime > (ParamEndTs-ParamLookBack) | project ProcessServiceName, SpanID, ChildOfSpanId = ParentID | join (%s | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | project ChildOfSpanId=SpanID, ParentService=ProcessServiceName) on ChildOfSpanId | where ProcessServiceName != ParentService | extend Call=pack('Parent', ParentService, 'Child', ProcessServiceName) | summarize CallCount=count() by tostring(Call) | extend Call=parse_json(Call) | evaluate bag_unpack(Call)`, kustoConfig.TraceTableName, kustoConfig.TraceTableName)
+	expectedOutput := fmt.Sprintf(`set query_results_cache_max_age = time(5m);%s | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | where StartTime < ParamEndTs and StartTime > (ParamEndTs-ParamLookBack) | project ProcessServiceName, SpanID, ChildOfSpanId = ParentID | join kind=inner(%s | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | project ChildOfSpanId=SpanID, ParentService=ProcessServiceName) on ChildOfSpanId | where ProcessServiceName != ParentService | extend Call=bag_pack('Parent', ParentService, 'Child', ProcessServiceName) | summarize CallCount=count() by tostring(Call) | extend Call=parse_json(Call) | evaluate bag_unpack(Call)`, kustoConfig.TraceTableName, kustoConfig.TraceTableName)
 	buf.Reset()
 	_, err := kustoStore.DependencyReader().GetDependencies(ctx, time.Now(), 168*time.Hour)
 	if err != nil {
