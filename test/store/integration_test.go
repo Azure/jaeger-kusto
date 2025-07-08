@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/jaeger-kusto/store"
 	"github.com/hashicorp/go-hclog"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -216,6 +217,193 @@ func TestGetServices_Integration(t *testing.T) {
 		// Services should be sorted alphabetically
 		for i := 1; i < len(services); i++ {
 			assert.LessOrEqual(t, services[i-1], services[i], "Services should be sorted alphabetically")
+		}
+	})
+}
+
+func TestGetOperations_Integration(t *testing.T) {
+	// Setup common test environment
+	env := setupTestEnvironment(t)
+	env.SetupCompleteEnvironment(t)
+
+	// Test GetOperations with various filter conditions
+	t.Run("GetOperations_AllOperations", func(t *testing.T) {
+		// Test with no service name and no span kind filters
+		query := spanstore.OperationQueryParameters{
+			ServiceName: "",
+			SpanKind:    "",
+		}
+
+		operations, err := env.KustoStore.SpanReader().GetOperations(env.Context, query)
+		require.NoError(t, err, "Failed to get operations")
+
+		// Expected operations from our test data
+		expectedOperations := map[string]string{
+			"http-get-request":  "CLIENT",
+			"database-query":    "SERVER",
+			"cache-lookup":      "CLIENT",
+			"notification-send": "PRODUCER",
+			"invalid-span":      "INTERNAL",
+		}
+
+		assert.Equal(t, len(expectedOperations), len(operations), "Number of operations should match")
+
+		// Convert to map for easier assertion
+		actualOperations := make(map[string]string)
+		for _, op := range operations {
+			actualOperations[op.Name] = op.SpanKind
+		}
+
+		for expectedName, expectedSpanKind := range expectedOperations {
+			assert.Contains(t, actualOperations, expectedName, "Operation should be present in results")
+			assert.Equal(t, expectedSpanKind, actualOperations[expectedName], "SpanKind should match")
+		}
+	})
+
+	// Matrix-based tests for service name filtering
+	t.Run("GetOperations_ByServiceName_Matrix", func(t *testing.T) {
+		// Test cases matrix: serviceName -> expected operations
+		testCases := []struct {
+			name               string
+			serviceName        string
+			expectedOperations []spanstore.Operation
+			shouldHaveResults  bool
+		}{
+			{
+				name:        "FrontendService",
+				serviceName: "frontend-service",
+				expectedOperations: []spanstore.Operation{
+					{Name: "http-get-request", SpanKind: "CLIENT"},
+				},
+				shouldHaveResults: true,
+			},
+			{
+				name:        "BackendService",
+				serviceName: "backend-service",
+				expectedOperations: []spanstore.Operation{
+					{Name: "database-query", SpanKind: "SERVER"},
+				},
+				shouldHaveResults: true,
+			},
+			{
+				name:        "CacheService",
+				serviceName: "cache-service",
+				expectedOperations: []spanstore.Operation{
+					{Name: "cache-lookup", SpanKind: "CLIENT"},
+				},
+				shouldHaveResults: true,
+			},
+			{
+				name:        "NotificationService",
+				serviceName: "notification-service",
+				expectedOperations: []spanstore.Operation{
+					{Name: "notification-send", SpanKind: "PRODUCER"},
+				},
+				shouldHaveResults: true,
+			},
+			{
+				name:               "NonExistentService",
+				serviceName:        "non-existent-service",
+				expectedOperations: []spanstore.Operation{},
+				shouldHaveResults:  false,
+			},
+			{
+				name:        "EmptyServiceName",
+				serviceName: "",
+				expectedOperations: []spanstore.Operation{
+					{Name: "http-get-request", SpanKind: "CLIENT"},
+					{Name: "database-query", SpanKind: "SERVER"},
+					{Name: "cache-lookup", SpanKind: "CLIENT"},
+					{Name: "notification-send", SpanKind: "PRODUCER"},
+					{Name: "invalid-span", SpanKind: "INTERNAL"},
+				},
+				shouldHaveResults: true,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				query := spanstore.OperationQueryParameters{
+					ServiceName: tc.serviceName,
+					SpanKind:    "",
+				}
+
+				operations, err := env.KustoStore.SpanReader().GetOperations(env.Context, query)
+				require.NoError(t, err, "Failed to get operations for %s", tc.serviceName)
+
+				if !tc.shouldHaveResults {
+					assert.Empty(t, operations, "Should return no operations for %s", tc.serviceName)
+					return
+				}
+
+				assert.Equal(t, len(tc.expectedOperations), len(operations),
+					"Number of operations should match for %s", tc.serviceName)
+
+				// Convert to maps for easier comparison
+				expectedOpsMap := make(map[string]string)
+				for _, op := range tc.expectedOperations {
+					expectedOpsMap[op.Name] = op.SpanKind
+				}
+
+				actualOpsMap := make(map[string]string)
+				for _, op := range operations {
+					actualOpsMap[op.Name] = op.SpanKind
+				}
+
+				for expectedName, expectedSpanKind := range expectedOpsMap {
+					assert.Contains(t, actualOpsMap, expectedName,
+						"Operation %s should be present for service %s", expectedName, tc.serviceName)
+					assert.Equal(t, expectedSpanKind, actualOpsMap[expectedName],
+						"SpanKind should match for operation %s in service %s", expectedName, tc.serviceName)
+				}
+			})
+		}
+	})
+
+	// Edge cases and validation tests
+	t.Run("GetOperations_EdgeCases", func(t *testing.T) {
+		edgeCases := []struct {
+			name        string
+			serviceName string
+			spanKind    string
+			description string
+		}{
+			{
+				name:        "EmptyServiceName_EmptySpanKind",
+				serviceName: "",
+				spanKind:    "",
+				description: "Should return all operations when both filters are empty",
+			},
+			{
+				name:        "WhitespaceServiceName",
+				serviceName: "   ",
+				spanKind:    "",
+				description: "Should handle whitespace service names",
+			},
+			{
+				name:        "CaseSensitiveServiceName",
+				serviceName: "Frontend-Service", // Different case
+				spanKind:    "",
+				description: "Should handle case-sensitive service names",
+			},
+		}
+
+		for _, tc := range edgeCases {
+			t.Run(tc.name, func(t *testing.T) {
+				query := spanstore.OperationQueryParameters{
+					ServiceName: tc.serviceName,
+					SpanKind:    tc.spanKind,
+				}
+
+				operations, err := env.KustoStore.SpanReader().GetOperations(env.Context, query)
+				require.NoError(t, err, "Should not error for edge case: %s", tc.description)
+
+				// Log results for analysis
+				t.Logf("Edge case '%s' returned %d operations", tc.name, len(operations))
+				for _, op := range operations {
+					t.Logf("  - Operation: %s, SpanKind: %s", op.Name, op.SpanKind)
+				}
+			})
 		}
 	})
 }
