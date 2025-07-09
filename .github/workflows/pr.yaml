@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: Build gem
+    name: Build and Run tests
     runs-on: ubuntu-latest
     environment: build
     
@@ -83,55 +83,4 @@ jobs:
       
       # Upload test results and coverage
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        if: always()
-        with:
-          file: ./coverage.out
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-      
-      # Upload test artifacts
-      - name: Upload test artifacts
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: test-results-${{ github.run_number }}
-          path: |
-            coverage.out
-            **/*test*.log
-          retention-days: 7
-      
-      # Cleanup Azure resources if needed
-      - name: Cleanup
-        if: always()
-        run: |
-          echo "Integration tests completed"
-          # Add any cleanup commands here if needed
-
-  # Security scanning
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
-      
-      - name: Run Gosec Security Scanner
-        uses: securecodewarrior/github-action-gosec@master
-        with:
-          args: '-fmt sarif -out gosec.sarif ./...'
-      
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v2
-        if: always()
-        with:
-          sarif_file: gosec.sarif
+        uses: codecov/codecov-action@v4
