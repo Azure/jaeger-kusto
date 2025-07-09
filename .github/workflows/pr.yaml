@@ -1,0 +1,137 @@
+name: PR Integration Tests
+
+on:
+  pull_request:
+  workflow_dispatch:  
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+  id-token: write  # Required for Azure OIDC authentication
+
+
+jobs:
+  build:
+    name: Build gem
+    runs-on: ubuntu-latest
+    environment: build
+    
+    steps:
+      # b) Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      # Setup Go
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'  # Adjust to your Go version
+          cache: true
+      
+      # Download dependencies
+      - name: Download dependencies
+        run: |
+          go mod download
+          go mod verify
+      
+      # c) Azure login using OIDC (recommended) or service principal
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.APP_ID }}
+          tenant-id: ${{ secrets.KUSTO_TENANT_ID }}
+          subscription-id: ${{ secrets.SUBSCRIPTION_ID }}    
+      
+      # Verify Azure login
+      - name: Verify Azure Login
+        run: |
+          az account show
+          az account list --output table
+      
+      # Run linting and basic checks
+      - name: Run go build
+        run: go mod tidy && go vet ./...
+      
+      - name: Run go fmt check
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "Go files are not formatted correctly:"
+            gofmt -s -l .
+            exit 1
+          fi
+      
+      # d) Run unit tests first (fast feedback)
+      - name: Run Unit Tests
+        run: |
+          go test -v -tags=integration ./test/store/reader_test.go
+        env:
+          CGO_ENABLED: 1
+      
+      # Run integration tests with Azure Kusto
+      - name: Run Integration Tests
+        run: |
+            go test -v -tags=integration ./test/store/integration_test.go
+        env:
+          KUSTO_CLUSTER: ${{ secrets.KUSTO_CLUSTER }}
+          KUSTO_DATABASE: ${{ secrets.KUSTO_DATABASE }}
+          KUSTO_TENANT_ID: ${{ secrets.KUSTO_TENANT_ID }}
+          CGO_ENABLED: 1
+      
+      # Upload test results and coverage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+      
+      # Upload test artifacts
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            coverage.out
+            **/*test*.log
+          retention-days: 7
+      
+      # Cleanup Azure resources if needed
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "Integration tests completed"
+          # Add any cleanup commands here if needed
+
+  # Security scanning
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Run Gosec Security Scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif ./...'
+      
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: gosec.sarif
