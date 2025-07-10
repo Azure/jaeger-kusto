@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       annotations:
-        service.version: 1.1.0-Preview
+        service.version: 2.0.0-preview
       labels:
         io.kompose.network/server-default: "true"
         io.service.name: kusto-jaeger
@@ -25,8 +25,8 @@ spec:
             - --query.base-path=/tracing
           env:
             - name: SPAN_STORAGE_TYPE
-              value: grpc-plugin
-          image: jaegertracing/all-in-one:1.56
+              value: grpc
+          image: jaegertracing/all-in-one:1.70.0
           name: jaeger
           ports:
             - containerPort: 16686

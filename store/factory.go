@@ -3,7 +3,7 @@ package store
 import (
 	"github.com/Azure/azure-kusto-go/kusto"
 	"github.com/Azure/azure-kusto-go/kusto/ingest"
-	"github.com/dodopizza/jaeger-kusto/config"
+	"github.com/Azure/jaeger-kusto/config"
 )
 
 type kustoFactory struct {

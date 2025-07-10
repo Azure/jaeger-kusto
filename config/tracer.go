@@ -2,10 +2,11 @@ package config
 
 import (
 	"fmt"
-	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go/config"
 	"io"
 	"os"
+
+	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go/config"
 )
 
 func NewPluginTracer(pc *PluginConfig) (opentracing.Tracer, io.Closer, error) {

@@ -30,30 +30,15 @@ const (
 	getTraceQuery = ` | where TraceID == ParamTraceID | extend Duration=datetime_diff('microsecond',EndTime,StartTime) , ProcessServiceName=tostring(ResourceAttributes.['service.name']) | project-rename Tags=TraceAttributes,Logs=Events,ProcessTags=ResourceAttributes| extend References=iff(isempty(ParentID),todynamic("[]"),pack_array(bag_pack("refType","CHILD_OF","traceID",TraceID,"spanID",ParentID)))`
 
 	getServices      = `getServices`
-	getServicesQuery = `| extend ProcessServiceName=tostring(ResourceAttributes.['service.name'])
-	| where ProcessServiceName!="" 
-	| summarize by ProcessServiceName 
-	| sort by ProcessServiceName asc`
+	getServicesQuery = `| extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | where ProcessServiceName!="" | summarize by ProcessServiceName 	| sort by ProcessServiceName asc`
 
 	getOpsWithNoParams      = `getOpsWithNoParams`
-	getOpsWithNoParamsQuery = `
-	| summarize count() by SpanName , SpanKind
-	| sort by count_
-	| project OperationName=SpanName,SpanKind`
+	getOpsWithNoParamsQuery = `	| summarize count() by SpanName , SpanKind	| sort by count_ | project OperationName=SpanName,SpanKind`
 
-	getOpsWithParamsQuery = ` | extend ProcessServiceName=tostring(ResourceAttributes.['service.name'])
-	| where ProcessServiceName == ParamProcessServiceName
-	| summarize count() by SpanName , SpanKind
-	| sort by count_
-	| project OperationName=SpanName,SpanKind`
+	getOpsWithParamsQuery = ` | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | where ProcessServiceName == ParamProcessServiceName | summarize count() by SpanName , SpanKind | sort by count_ | project OperationName=SpanName,SpanKind`
 
-	getDependenciesQuery = ` | extend ProcessServiceName=tostring(ResourceAttributes.['service.name'])
-	| where StartTime < ParamEndTs and StartTime > (ParamEndTs-ParamLookBack)
-	| project ProcessServiceName, SpanID, ChildOfSpanId = ParentID | join (`
-	getDependenciesJoinQuery = ` | extend ProcessServiceName=tostring(ResourceAttributes.['service.name'])
-	| project ChildOfSpanId=SpanID, ParentService=ProcessServiceName) on ChildOfSpanId | where ProcessServiceName != ParentService
-	| extend Call=pack('Parent', ParentService, 'Child', ProcessServiceName) | summarize CallCount=count() by tostring(Call) | extend Call=parse_json(Call)
-	| evaluate bag_unpack(Call)`
+	getDependenciesQuery     = ` | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | where StartTime < ParamEndTs and StartTime > (ParamEndTs-ParamLookBack) | project ProcessServiceName, SpanID, ChildOfSpanId = ParentID | join kind=inner(`
+	getDependenciesJoinQuery = ` | extend ProcessServiceName=tostring(ResourceAttributes.['service.name']) | where StartTime < ParamEndTs and StartTime > (ParamEndTs-ParamLookBack) | project ChildOfSpanId=SpanID, ParentService=ProcessServiceName) on ChildOfSpanId | where ProcessServiceName != ParentService | extend Call=bag_pack('Parent', ParentService, 'Child', ProcessServiceName) | summarize CallCount=count() by tostring(Call) | extend Call=parse_json(Call) | evaluate bag_unpack(Call)`
 
 	getTraceIdBaseQuery = ` | extend Duration=datetime_diff('microsecond',EndTime,StartTime) , ProcessServiceName=tostring(ResourceAttributes.['service.name'])`
 

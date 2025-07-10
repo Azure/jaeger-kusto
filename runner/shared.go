@@ -1,7 +1,7 @@
 package runner
 
 import (
-	"github.com/dodopizza/jaeger-kusto/config"
+	"github.com/Azure/jaeger-kusto/config"
 	ot "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/hashicorp/go-hclog"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"

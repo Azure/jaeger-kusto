@@ -3,10 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
-	"github.com/spf13/viper"
 	"os"
 	"reflect"
 	"unicode"
+
+	"github.com/spf13/viper"
 )
 
 func load(path string, data interface{}) error {
