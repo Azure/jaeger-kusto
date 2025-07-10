@@ -46,12 +46,6 @@ jobs:
           tenant-id: ${{ secrets.KUSTO_TENANT_ID }}
           subscription-id: ${{ secrets.SUBSCRIPTION_ID }}    
       
-      # Verify Azure login
-      - name: Verify Azure Login
-        run: |
-          az account show
-          az account list --output table
-      
       # Run linting and basic checks
       - name: Run go build
         run: go mod tidy && go vet ./...
@@ -63,14 +57,6 @@ jobs:
             gofmt -s -l .
             exit 1
           fi
-      
-      # d) Run unit tests first (fast feedback)
-      - name: Run Unit Tests
-        run: |
-          go test -v -tags=integration ./test/store/reader_test.go
-        env:
-          CGO_ENABLED: 1
-      
       # Run integration tests with Azure Kusto
       - name: Run Integration Tests
         run: |
