@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   plugin:
     build:
@@ -17,7 +16,7 @@ services:
       - "../../jaeger-kusto-config.json:/config/jaeger-kusto-config.json"
       - "./jaeger-kusto-plugin-config.json:/config/jaeger-kusto-plugin-config.json"
   jaeger:
-    image: jaegertracing/all-in-one:1.71.0
+    image: jaegertracing/jaeger:2.8.0
     ports:
       - "5775:5775/udp"
       - "6831:6831/udp"

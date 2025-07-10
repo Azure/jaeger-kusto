@@ -129,8 +129,8 @@ func (env *TestEnvironment) createTempTable(t *testing.T) {
 	require.NoError(t, err, "Failed to create temporary table")
 }
 
-// IngestTestData loads the test data into the temporary table
-func (env *TestEnvironment) IngestTestData(t *testing.T) {
+// ingestTestData loads the test data into the temporary table
+func (env *TestEnvironment) ingestTestData(t *testing.T) {
 	// Load test data into the temporary table
 	ingestCmd := fmt.Sprintf(`.ingest inline into table %s <| %s`, env.TempTableName, testOTELTracesData)
 	// Ingest the test data into the temporary table
@@ -168,7 +168,7 @@ func (env *TestEnvironment) createKustoStore(t *testing.T) {
 // setupCompleteEnvironment sets up the complete test environment with table, data, and store
 func (env *TestEnvironment) setupCompleteEnvironment(t *testing.T) {
 	env.createTempTable(t)
-	env.IngestTestData(t)
+	env.ingestTestData(t)
 	env.createKustoStore(t)
 }
 
