@@ -71,10 +71,18 @@ func (r *KustoMetricsReader) QueryCallRates(ctx context.Context, parsed *ParsedQ
 	rateSeconds := parsed.RateWindow.Seconds()
 
 	q := r.buildBaseQuery(parsed, start, end, step)
-	q += fmt.Sprintf(`| summarize total_calls = count() by ServiceName, SpanName, bin(StartTime, %s)
+
+	if r.useRawTable {
+		q += fmt.Sprintf(`| summarize total_calls = count() by ServiceName, SpanName, bin(StartTime, %s)
 | extend MetricValue = todouble(total_calls) / %f
 | project TimeBucket = StartTime, ServiceName, SpanName, MetricValue
 | order by ServiceName asc, SpanName asc, TimeBucket asc`, formatKustoDuration(step), rateSeconds)
+	} else {
+		q += fmt.Sprintf(`| summarize total_calls = sum(call_count) by ServiceName, SpanName, bin(StartTime, %s)
+| extend MetricValue = todouble(total_calls) / %f
+| project TimeBucket = StartTime, ServiceName, SpanName, MetricValue
+| order by ServiceName asc, SpanName asc, TimeBucket asc`, formatKustoDuration(step), rateSeconds)
+	}
 
 	return r.executeMetricsQuery(ctx, q, groupByOp)
 }
@@ -85,10 +93,18 @@ func (r *KustoMetricsReader) QueryErrorRates(ctx context.Context, parsed *Parsed
 	rateSeconds := parsed.RateWindow.Seconds()
 
 	q := r.buildBaseQuery(parsed, start, end, step)
-	q += fmt.Sprintf(`| summarize total_errors = countif(StatusCode == 'STATUS_CODE_ERROR') by ServiceName, SpanName, bin(StartTime, %s)
+
+	if r.useRawTable {
+		q += fmt.Sprintf(`| summarize total_errors = countif(SpanStatus == 'STATUS_CODE_ERROR') by ServiceName, SpanName, bin(StartTime, %s)
 | extend MetricValue = todouble(total_errors) / %f
 | project TimeBucket = StartTime, ServiceName, SpanName, MetricValue
 | order by ServiceName asc, SpanName asc, TimeBucket asc`, formatKustoDuration(step), rateSeconds)
+	} else {
+		q += fmt.Sprintf(`| summarize total_errors = sum(error_count) by ServiceName, SpanName, bin(StartTime, %s)
+| extend MetricValue = todouble(total_errors) / %f
+| project TimeBucket = StartTime, ServiceName, SpanName, MetricValue
+| order by ServiceName asc, SpanName asc, TimeBucket asc`, formatKustoDuration(step), rateSeconds)
+	}
 
 	return r.executeMetricsQuery(ctx, q, groupByOp)
 }
@@ -99,12 +115,35 @@ func (r *KustoMetricsReader) QueryLatencies(ctx context.Context, parsed *ParsedQ
 	percentile := parsed.Quantile * 100 // e.g. 0.95 -> 95
 
 	q := r.buildBaseQuery(parsed, start, end, step)
-	q += fmt.Sprintf(`| extend Duration_ms = datetime_diff('millisecond', EndTime, StartTime)
+
+	if r.useRawTable {
+		q += fmt.Sprintf(`| extend Duration_ms = datetime_diff('millisecond', EndTime, StartTime)
 | summarize MetricValue = percentile(Duration_ms, %g) by ServiceName, SpanName, bin(StartTime, %s)
 | project TimeBucket = StartTime, ServiceName, SpanName, MetricValue
 | order by ServiceName asc, SpanName asc, TimeBucket asc`, percentile, formatKustoDuration(step))
+	} else {
+		// MV has pre-computed percentiles; pick the closest one via weighted average approximation
+		pCol := percentileColumn(percentile)
+		q += fmt.Sprintf(`| summarize MetricValue = avg(%s) by ServiceName, SpanName, bin(StartTime, %s)
+| project TimeBucket = StartTime, ServiceName, SpanName, MetricValue
+| order by ServiceName asc, SpanName asc, TimeBucket asc`, pCol, formatKustoDuration(step))
+	}
 
 	return r.executeMetricsQuery(ctx, q, groupByOp)
+}
+
+// percentileColumn maps a percentile value to the corresponding MV column name.
+func percentileColumn(p float64) string {
+	switch {
+	case p <= 50:
+		return "p50_ms"
+	case p <= 75:
+		return "p75_ms"
+	case p <= 95:
+		return "p95_ms"
+	default:
+		return "p99_ms"
+	}
 }
 
 // buildBaseQuery generates the common prefix for all metrics KQL queries.
@@ -112,7 +151,12 @@ func (r *KustoMetricsReader) buildBaseQuery(parsed *ParsedQuery, start, end time
 	var sb strings.Builder
 
 	sb.WriteString(r.metricsView)
-	sb.WriteString("\n| extend ServiceName = tostring(ResourceAttributes.['service.name'])")
+
+	// MV already has ServiceName column; raw table needs to extract it from ResourceAttributes
+	if r.useRawTable {
+		sb.WriteString("\n| extend ServiceName = tostring(ResourceAttributes.['service.name'])")
+	}
+
 	sb.WriteString(fmt.Sprintf("\n| where StartTime between (datetime(%s) .. datetime(%s))",
 		start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339)))
 

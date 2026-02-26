@@ -27,7 +27,7 @@ services:
       - "14268:14268"
       - "14250:14250"
     environment:
-      "SPAN_STORAGE_TYPE": "grpc-plugin"
+      "SPAN_STORAGE_TYPE": "grpc"
     command:
       - "--grpc-storage.server=plugin:8989"
       - "--grpc-storage.connection-timeout=60s"

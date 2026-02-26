@@ -16,7 +16,10 @@ data:
         "database": {{ .Values.authConfig.database  | quote}},
         "endpoint": {{ .Values.authConfig.clusterUrl | quote}},
         {{- if .Values.authConfig.tenantId }}
-        "tenantId": {{ .Values.authConfig.tenantId | quote}}
+        "tenantId": {{ .Values.authConfig.tenantId | quote}},
+        {{- end }}
+        {{- if .Values.authConfig.metricsViewName }}
+        "metricsViewName": {{ .Values.authConfig.metricsViewName | quote}}
         {{- end }}
     }
 kind: ConfigMap

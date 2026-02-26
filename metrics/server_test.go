@@ -132,28 +132,54 @@ func TestFormatKustoDuration(t *testing.T) {
 
 func TestBuildBaseQuery(t *testing.T) {
 	logger := hclog.NewNullLogger()
-	reader := NewKustoMetricsReader(KustoMetricsReaderConfig{
-		Client:      &mockKustoClient{},
-		Database:    "testdb",
-		TraceTable:  "OTELTraces",
-		MetricsView: "SpanMetrics",
-		Logger:      logger,
+
+	t.Run("with materialized view", func(t *testing.T) {
+		reader := NewKustoMetricsReader(KustoMetricsReaderConfig{
+			Client:      &mockKustoClient{},
+			Database:    "testdb",
+			TraceTable:  "OTELTraces",
+			MetricsView: "SpanMetrics",
+			Logger:      logger,
+		})
+
+		parsed := &ParsedQuery{
+			Services:  []string{"svc1", "svc2"},
+			SpanKinds: []string{"SPAN_KIND_SERVER"},
+		}
+		start := time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC)
+		end := time.Date(2024, 3, 15, 11, 0, 0, 0, time.UTC)
+
+		q := reader.buildBaseQuery(parsed, start, end, time.Minute)
+
+		assert.Contains(t, q, "SpanMetrics")
+		assert.NotContains(t, q, "ResourceAttributes", "MV should not reference ResourceAttributes")
+		assert.Contains(t, q, "where StartTime between")
+		assert.Contains(t, q, "where ServiceName in~ ('svc1', 'svc2')")
+		assert.Contains(t, q, "where SpanKind in~ ('SPAN_KIND_SERVER')")
 	})
 
-	parsed := &ParsedQuery{
-		Services:  []string{"svc1", "svc2"},
-		SpanKinds: []string{"SPAN_KIND_SERVER"},
-	}
-	start := time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC)
-	end := time.Date(2024, 3, 15, 11, 0, 0, 0, time.UTC)
+	t.Run("with raw table", func(t *testing.T) {
+		reader := NewKustoMetricsReader(KustoMetricsReaderConfig{
+			Client:      &mockKustoClient{},
+			Database:    "testdb",
+			TraceTable:  "OTELTraces",
+			MetricsView: "",
+			Logger:      logger,
+		})
 
-	q := reader.buildBaseQuery(parsed, start, end, time.Minute)
+		parsed := &ParsedQuery{
+			Services:  []string{"svc1"},
+			SpanKinds: []string{"SPAN_KIND_SERVER"},
+		}
+		start := time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC)
+		end := time.Date(2024, 3, 15, 11, 0, 0, 0, time.UTC)
 
-	assert.Contains(t, q, "SpanMetrics")
-	assert.Contains(t, q, "ServiceName = tostring(ResourceAttributes.['service.name'])")
-	assert.Contains(t, q, "where StartTime between")
-	assert.Contains(t, q, "where ServiceName in~ ('svc1', 'svc2')")
-	assert.Contains(t, q, "where SpanKind in~ ('SPAN_KIND_SERVER')")
+		q := reader.buildBaseQuery(parsed, start, end, time.Minute)
+
+		assert.Contains(t, q, "OTELTraces")
+		assert.Contains(t, q, "ServiceName = tostring(ResourceAttributes.['service.name'])")
+		assert.Contains(t, q, "where StartTime between")
+	})
 }
 
 func TestContainsSpanName(t *testing.T) {
