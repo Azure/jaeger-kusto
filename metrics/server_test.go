@@ -90,7 +90,8 @@ func TestServer_QueryRange_InvalidQuery(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
 	assert.Equal(t, "error", resp["status"])
 }
 
