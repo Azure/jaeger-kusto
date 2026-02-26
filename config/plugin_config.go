@@ -23,6 +23,8 @@ type PluginConfig struct {
 	DisableJaegerUiTraces       bool    `json:"disableJaegerUiTraces"`
 	ReadNoTruncation            bool    `json:"readNoTruncation"`
 	ReadNoTimeout               bool    `json:"readNoTimeout"`
+	MetricsEnabled              bool    `json:"metricsEnabled"`
+	MetricsListenAddress        string  `json:"metricsListenAddress"`
 }
 
 // NewDefaultPluginConfig returns default configuration options
@@ -44,6 +46,8 @@ func NewDefaultPluginConfig() *PluginConfig {
 		DisableJaegerUiTraces:       true, //disable UI logs of jaeger into OTELTraces. No traces from Jaeger UI will be sent
 		ReadNoTruncation:            false,
 		ReadNoTimeout:               false,
+		MetricsEnabled:              false,
+		MetricsListenAddress:        ":9090",
 	}
 }
 

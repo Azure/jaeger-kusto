@@ -17,6 +17,34 @@ type store struct {
 	writer                spanstore.Writer
 }
 
+// NewKustoClient creates a new Kusto client from the given configuration.
+// This is exported for reuse by the metrics server.
+func NewKustoClient(kc *config.KustoConfig, logger hclog.Logger) (*kusto.Client, error) {
+	var kcsb *kusto.ConnectionStringBuilder
+	if kc.UseManagedIdentity {
+		if kc.ClientID == "" {
+			logger.Info("Using system managed identity")
+			kcsb = kusto.NewConnectionStringBuilder(kc.Endpoint).WithSystemManagedIdentity()
+		} else {
+			logger.Info("Using user managed identity")
+			kcsb = kusto.NewConnectionStringBuilder(kc.Endpoint).WithUserManagedIdentity(kc.ClientID)
+		}
+	} else {
+		if kc.UseWorkloadIdentity {
+			logger.Info("Using workload identity for authentication")
+			kcsb = kusto.NewConnectionStringBuilder(kc.Endpoint).WithDefaultAzureCredential()
+		} else {
+			if kc.ClientID == "" || kc.ClientSecret == "" || kc.TenantID == "" {
+				return nil, errors.New("missing client configuration (ClientId, ClientSecret, TenantId) for kusto")
+			}
+			logger.Info("Authenticating using AppId [%s] / Secret / TenantId [%s]", kc.ClientID, kc.TenantID)
+			kcsb = kusto.NewConnectionStringBuilder(kc.Endpoint).WithAadAppKey(kc.ClientID, kc.ClientSecret, kc.TenantID)
+		}
+	}
+	kcsb.SetConnectorDetails("Kusto Jaeger", "0.0.1", "plugin", "", false, "")
+	return kusto.New(kcsb)
+}
+
 // NewStore creates new Kusto store for Jaeger span storage
 func NewStore(pc *config.PluginConfig, kc *config.KustoConfig, logger hclog.Logger) (shared.StoragePlugin, error) {
 	var kcsb *kusto.ConnectionStringBuilder

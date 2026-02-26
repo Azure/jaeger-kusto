@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/dodopizza/jaeger-kusto/metrics"
 	"github.com/dodopizza/jaeger-kusto/runner"
 
 	"github.com/dodopizza/jaeger-kusto/config"
@@ -38,6 +39,32 @@ func main() {
 	if err != nil {
 		logger.Error("error occurred while initializing kusto storage", "error", err)
 		os.Exit(2)
+	}
+
+	// Start the PromQL metrics shim server if enabled
+	if pluginConfig.MetricsEnabled {
+		kustoClient, err := store.NewKustoClient(kustoConfig, logger)
+		if err != nil {
+			logger.Error("error occurred while creating kusto client for metrics", "error", err)
+			os.Exit(2)
+		}
+		metricsReader := metrics.NewKustoMetricsReader(metrics.KustoMetricsReaderConfig{
+			Client:      kustoClient,
+			Database:    kustoConfig.Database,
+			TraceTable:  kustoConfig.TraceTableName,
+			MetricsView: kustoConfig.MetricsViewName,
+			Logger:      logger,
+			ReadOptions: kustoConfig.ClientRequestOptions,
+		})
+		metricsServer := metrics.NewServer(metrics.ServerConfig{
+			Reader: metricsReader,
+			Logger: logger,
+		})
+		go func() {
+			if err := metricsServer.ListenAndServe(pluginConfig.MetricsListenAddress); err != nil {
+				logger.Error("metrics server error", "error", err)
+			}
+		}()
 	}
 
 	if err := runner.Serve(pluginConfig, kustoStore, logger); err != nil {
