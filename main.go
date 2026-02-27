@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/dodopizza/jaeger-kusto/metrics"
 	"github.com/dodopizza/jaeger-kusto/runner"
@@ -35,7 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	kustoStore, err := store.NewStore(pluginConfig, kustoConfig, logger)
+	kustoStore, err := store.NewStore(kustoConfig, logger)
 	if err != nil {
 		logger.Error("error occurred while initializing kusto storage", "error", err)
 		os.Exit(2)
@@ -60,9 +64,20 @@ func main() {
 			Reader: metricsReader,
 			Logger: logger,
 		})
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := metricsServer.Shutdown(ctx); err != nil {
+				logger.Error("failed to gracefully shutdown metrics server", "error", err)
+			}
+		}()
 		go func() {
 			if err := metricsServer.ListenAndServe(pluginConfig.MetricsListenAddress); err != nil {
+				if errors.Is(err, http.ErrServerClosed) {
+					return
+				}
 				logger.Error("metrics server error", "error", err)
+				os.Exit(2)
 			}
 		}()
 	}

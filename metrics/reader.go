@@ -223,10 +223,15 @@ func containsSpanName(groupBy []string) bool {
 	return false
 }
 
+func escapeKustoString(s string) string {
+	// In KQL, single quotes inside single-quoted string literals are escaped by doubling them.
+	return strings.ReplaceAll(s, "'", "''")
+}
+
 func quoteStrings(ss []string) []string {
 	result := make([]string, len(ss))
 	for i, s := range ss {
-		result[i] = fmt.Sprintf("'%s'", s)
+		result[i] = fmt.Sprintf("'%s'", escapeKustoString(s))
 	}
 	return result
 }

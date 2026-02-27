@@ -113,7 +113,7 @@ OTELTraces table → SpanMetrics Materialized View → PromQL Shim (built-in) �
 Run the KQL script in `config/kusto-materialized-view.kql` against your Kusto database:
 
 ```kql
-.create- async materialized-view with (backfill=true) SpanMetrics on table OTELTraces
+.create-or-alter async materialized-view with (backfill=true) SpanMetrics on table OTELTraces
 {
     OTELTraces
     | extend
@@ -153,7 +153,7 @@ And add the materialized view name to your Kusto configuration JSON:
 
 If `metricsViewName` is empty, the plugin will query the raw `OTELTraces` table directly (slower for large datasets but requires no materialized view setup).
 
-A full example is at `config/jaeger-kusto-plugin-config-with-metrics.json`.
+A full example is at `build/server/jaeger-kusto-plugin-config.json`.
 
 #### 3. Configure Jaeger V2
 

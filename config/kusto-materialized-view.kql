@@ -12,8 +12,20 @@
 --   - duration percentiles: P50, P75, P95, P99 in milliseconds
 --
 -- The view is grouped by: ServiceName, SpanName, SpanKind, 1-minute time buckets
+--
+-- NOTE ON BACKFILL:
+--   - The "backfill=true" option will process existing data in the OTELTraces table to
+--     populate the materialized view. On large production trace tables this can be
+--     resource-intensive and may impact cluster performance.
+--   - Before running this in production, verify your cluster has sufficient capacity
+--     and consider running during a low-traffic window or first on a non-production
+--     environment.
+--   - For initial setup, backfill is optional:
+--       * Keep "backfill=true" if you need historical data populated immediately.
+--       * Remove the "with (backfill=true)" clause (or change to "backfill=false")
+--         if you only need the view to process new incoming data.
 
-.create-or-alter materialized-view with (backfill=true) SpanMetrics on table OTELTraces
+.create-or-alter async materialized-view with (backfill=true) SpanMetrics on table OTELTraces
 {
     OTELTraces
     | extend 

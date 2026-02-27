@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -20,6 +21,7 @@ type Server struct {
 	reader *KustoMetricsReader
 	logger hclog.Logger
 	mux    *http.ServeMux
+	server *http.Server
 }
 
 // NewServer creates a new PromQL shim server.
@@ -44,7 +46,19 @@ func (s *Server) Handler() http.Handler {
 // ListenAndServe starts the HTTP server.
 func (s *Server) ListenAndServe(addr string) error {
 	s.logger.Info("starting PromQL shim server", "address", addr)
-	return http.ListenAndServe(addr, s.mux)
+	s.server = &http.Server{
+		Addr:    addr,
+		Handler: s.mux,
+	}
+	return s.server.ListenAndServe()
+}
+
+// Shutdown gracefully shuts down the HTTP server.
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s.server == nil {
+		return nil
+	}
+	return s.server.Shutdown(ctx)
 }
 
 // handleQueryRange implements POST/GET /api/v1/query_range.
