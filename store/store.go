@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"time"
 
 	"github.com/Azure/azure-kusto-go/kusto"
 	"github.com/dodopizza/jaeger-kusto/config"
@@ -46,7 +47,7 @@ func NewKustoClient(kc *config.KustoConfig, logger hclog.Logger) (*kusto.Client,
 }
 
 // NewStore creates new Kusto store for Jaeger span storage
-func NewStore(kc *config.KustoConfig, logger hclog.Logger) (shared.StoragePlugin, error) {
+func NewStore(kc *config.KustoConfig, pc *config.PluginConfig, logger hclog.Logger) (shared.StoragePlugin, error) {
 	client, err := NewKustoClient(kc, logger)
 	if err != nil {
 		return nil, err
@@ -55,9 +56,29 @@ func NewStore(kc *config.KustoConfig, logger hclog.Logger) (shared.StoragePlugin
 	// create factory for trace table operations
 	factory := newKustoFactory(client, kc.Database, kc.TraceTableName)
 
-	reader, err := newKustoSpanReader(factory, logger, kc.ClientRequestOptions)
+	var cache *discoveryCache
+	var cacheTTL time.Duration
+	if pc != nil && pc.CacheDiscoveryQueries {
+		var parseErr error
+		cacheTTL, parseErr = time.ParseDuration(pc.CacheDiscoveryTTL)
+		if parseErr != nil {
+			logger.Warn("Invalid cacheDiscoveryTTL, using default 6h", "value", pc.CacheDiscoveryTTL, "error", parseErr)
+			cacheTTL = 6 * time.Hour
+		}
+		cache = newDiscoveryCache(cacheTTL)
+		logger.Info("Discovery query caching enabled", "ttl", cacheTTL)
+	}
+
+	reader, err := newKustoSpanReader(factory, logger, kc.ClientRequestOptions, cache)
 	if err != nil {
 		return nil, err
+	}
+
+	// Start background dependency cache refresh when caching is enabled
+	if cache != nil {
+		refresher := newDependencyRefresher(reader, cache, cacheTTL, logger)
+		reader.depRefresher = refresher
+		refresher.start()
 	}
 
 	store := &store{

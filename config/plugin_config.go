@@ -20,6 +20,8 @@ type PluginConfig struct {
 	ReadNoTimeout               bool    `json:"readNoTimeout"`
 	MetricsEnabled              bool    `json:"metricsEnabled"`
 	MetricsListenAddress        string  `json:"metricsListenAddress"`
+	CacheDiscoveryQueries       bool    `json:"cacheDiscoveryQueries"`
+	CacheDiscoveryTTL           string  `json:"cacheDiscoveryTTL"`
 }
 
 // NewDefaultPluginConfig returns default configuration options
@@ -38,6 +40,8 @@ func NewDefaultPluginConfig() *PluginConfig {
 		ReadNoTimeout:               false,
 		MetricsEnabled:              false,
 		MetricsListenAddress:        ":9090",
+		CacheDiscoveryQueries:       false,
+		CacheDiscoveryTTL:           "6h",
 	}
 }
 
