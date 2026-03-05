@@ -2,10 +2,6 @@ package runner
 
 import (
 	"fmt"
-	"github.com/dodopizza/jaeger-kusto/config"
-	"github.com/hashicorp/go-hclog"
-	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
-	"google.golang.org/grpc"
 	"net"
 	"net/url"
 	"os"
@@ -13,12 +9,16 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/dodopizza/jaeger-kusto/config"
+	"github.com/hashicorp/go-hclog"
+	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
 )
 
 func serveServer(c *config.PluginConfig, store shared.StoragePlugin, logger hclog.Logger) error {
-	plugin := shared.StorageGRPCPlugin{
-		Impl: store,
-	}
+	handler := shared.NewGRPCHandlerWithPlugins(store, nil, nil)
 
 	tracer, closer, err := config.NewPluginTracer(c)
 	if err != nil {
@@ -27,7 +27,8 @@ func serveServer(c *config.PluginConfig, store shared.StoragePlugin, logger hclo
 	defer closer.Close()
 
 	server := newGRPCServerWithTracer(tracer)
-	if err := plugin.GRPCServer(nil, server); err != nil {
+	hs := health.NewServer()
+	if err := handler.Register(server, hs); err != nil {
 		return err
 	}
 
