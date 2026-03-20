@@ -39,7 +39,7 @@ func newKustoV2Reader(factory *kustoFactory, logger hclog.Logger, defaultReadOpt
 // the V1 Jaeger model projections.
 const (
 	v2GetTraceQuery = ` | where TraceID == ParamTraceID` +
-		` | project TraceID, SpanID, ParentID, SpanName, SpanKind, SpanStatus, SpanStatusMessage,` +
+		` | project TraceID, SpanID, ParentID, SpanName, SpanKind, SpanStatus, SpanStatusMessage=column_ifexists('SpanStatusMessage',''),` +
 		` StartTime, EndTime, ResourceAttributes, TraceAttributes, Events, Links`
 
 	v2GetServicesQuery = `| extend ProcessServiceName=tostring(ResourceAttributes.['service.name'])` +
@@ -64,7 +64,7 @@ const (
 		` Duration=datetime_diff('microsecond',EndTime,StartTime)`
 
 	v2TracesProjection = ` | project TraceID, SpanID, ParentID, SpanName, SpanKind, SpanStatus,` +
-		` SpanStatusMessage, StartTime, EndTime, ResourceAttributes, TraceAttributes, Events, Links`
+		` SpanStatusMessage=column_ifexists('SpanStatusMessage',''), StartTime, EndTime, ResourceAttributes, TraceAttributes, Events, Links`
 
 	v2DependenciesGraphQuery = `
 	| where StartTime between ((ParamEndTs - ParamLookBack) .. ParamEndTs)

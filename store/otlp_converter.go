@@ -74,6 +74,21 @@ func hexToBytes(s string) []byte {
 	return b
 }
 
+// hexToBytesOrNilIfZero decodes a hex string but returns nil if all bytes are zero.
+// Used for ParentSpanId where all-zeros means "no parent" (root span).
+func hexToBytesOrNilIfZero(s string) []byte {
+	b := hexToBytes(s)
+	if b == nil {
+		return nil
+	}
+	for _, v := range b {
+		if v != 0 {
+			return b
+		}
+	}
+	return nil
+}
+
 // toUnixNano converts a time.Time to nanoseconds since epoch.
 func toUnixNano(t time.Time) uint64 {
 	if t.IsZero() {
@@ -228,7 +243,7 @@ func convertOTLPSpanToProto(s *otlpSpan) *tracepb.Span {
 	span := &tracepb.Span{
 		TraceId:                hexToBytes(s.TraceID),
 		SpanId:                 hexToBytes(s.SpanID),
-		ParentSpanId:           hexToBytes(s.ParentID),
+		ParentSpanId:           hexToBytesOrNilIfZero(s.ParentID),
 		Name:                   s.SpanName,
 		Kind:                   spanKindFromString(s.SpanKind),
 		StartTimeUnixNano:      toUnixNano(s.StartTime),
