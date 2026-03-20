@@ -3,7 +3,7 @@
     "kustoConfigPath": "/config/jaeger-kusto-config.json",
     "logLevel": "info",
     "logJson": true,
-    "remoteMode": true,
+    "remoteListenAddress": "tcp://:8989",
     "tracingSamplerPercentage": 0.0,
     "tracingRPCMetrics": false,
     "metricsEnabled": true,

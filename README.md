@@ -1,23 +1,36 @@
 # Azure Data Explorer (Kusto) gRPC backend for Jaeger
 
+This is a **Jaeger V2 remote storage** gRPC backend for [Jaeger](https://www.jaegertracing.io/) that reads traces from **Azure Data Explorer (Kusto)**. Originally forked from https://github.com/dodopizza/jaeger-kusto, it now supports the OTEL exporter used with ADX and has been migrated to Jaeger V2's gRPC Remote Storage API with OTLP-native data models.
 
-This is a storage grpc-plugin for [Jaeger end-to-end distributed tracing system](https://www.jaegertracing.io/) and was originally forked from https://github.com/dodopizza/jaeger-kusto and extended now to support OTEL exporter used with ADX.
+> **Note:** This plugin is read-only. Trace ingestion is handled by the [OpenTelemetry Collector's ADX exporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/azuredataexplorerexporter/README.md). The plugin only queries Kusto to render traces in the Jaeger UI.
 
+## Architecture
 
+```
+OTEL Collector → ADX Exporter → Kusto (OTELTraces table)
+                                        ↓ (read)
+Jaeger V2 ←── gRPC Remote Storage ←── jaeger-kusto plugin
+   ↑                                        ↓
+   └────── PromQL (metrics shim) ←── metrics/ package
+```
+
+The plugin implements three gRPC services:
+- **TraceReader** — GetTraces, GetServices, GetOperations, FindTraces, FindTraceIDs
+- **DependencyReader** — GetDependencies (service graph)
+- **TraceService** — OTEL Export (no-op, since ingestion is handled externally)
 
 ## Installation and testing
 
 For local testing, you need Docker and docker-compose.
 
-First, you have to have Azure Data Explorer cluster, here's a quickstart: <https://docs.microsoft.com/en-us/azure/data-explorer/create-cluster-database-portal>
+First, you need an Azure Data Explorer cluster: <https://docs.microsoft.com/en-us/azure/data-explorer/create-cluster-database-portal>
 
-Then, the setup needed for Kusto/ADX exporter with the tables required for storing OTEL traces data can be set up as explained in the documentation [here](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/azuredataexplorerexporter/README.md).
-
-The plugin can query OTELTraces table and provide trace UI details on Jaeger
-
+Then, set up the Kusto/ADX exporter tables as explained in the [OTEL ADX exporter docs](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/azuredataexplorerexporter/README.md).
 
 ## Authentication
-Extending the authentication table provided in the Jaeger plugin, the application uses a similar config file to render Jaeger traces as well.
+
+The plugin uses a JSON config file for Kusto authentication:
+
 ```json
 {
   "clientId": "",
@@ -25,73 +38,74 @@ Extending the authentication table provided in the Jaeger plugin, the applicatio
   "database": "<database>",
   "endpoint": "https://<cluster>.<region>.kusto.windows.net",
   "tenantId": "",
-  "traceTableName":"<trace_table>",// defaults to `OTELTraces` if not provided
-  "useManagedIdentity": false, // defaults to false, if true, the plugin will use managed identity to authenticate. Use the clientId field to pass the clientId of the managed identity
-  "useWorkloadIdentity": false // defaults to false, if true, the plugin will use WorkloadIdentity to authenticate. Note that the plugin will use the default credentials of the VM/Container to authenticate, it will first look for Azure environment variables to authenticate, followed by the workload identity
+  "traceTableName": "<trace_table>",
+  "useManagedIdentity": false,
+  "useWorkloadIdentity": false
 }
 ```
 
-Save this file as `jaeger-kusto-config.json` in the root of repository.
+| Auth Method | Description |
+| --- | --- |
+| **AAD App Key** | Set `clientId`, `clientSecret`, `tenantId` |
+| **Managed Identity** | Set `useManagedIdentity: true`, use `clientId` for the managed identity's client ID |
+| **Workload Identity** | Set `useWorkloadIdentity: true` — uses Azure default credentials (environment variables → workload identity) |
 
+Save this file as `jaeger-kusto-config.json` in the root of the repository.
 
 ## Local runs
-Plugin can be started as a standalone app (GRPC server):
 
-* Standalone app (as grpc server). For this mode, use `docker compose --file build/server/docker-compose.yml up --build`
-Once this is done, you can run the Jaeger UI on <http://localhost:16686> and see the traces in the UI.
+Start with docker-compose:
 
-
-# Deploying to Kubernetes
-
-The plugin and Jaeger can be deployed to Kubernetes using the provided Helm chart. The Helm chart is available in the `build/server/helm` folder. The properties can be customized through values.yaml file.
-
-The list of properties that can be customized are:
-
-```yaml
-baseConfig:
-  logLevel: 
-  logJson: 
-  readNoTruncation: 
-  readNoTimeout:
-authConfig:
-  clientId: 
-  useManagedIdentity: 
-  database: 
-  clusterUrl: 
-  tenantId: 
-  traceTableName: 
+```bash
+docker compose -f build/server/docker-compose.yml up --build
 ```
 
+This starts:
+- **jaeger-kusto plugin** on port 8989 (gRPC) and 9090 (metrics shim)
+- **Jaeger V2** on port 16686 (UI), configured to use the plugin as remote storage
 
-table of yaml properties:
- 
+Open <http://localhost:16686> for the Jaeger UI.
+
+## Deploying to Kubernetes
+
+Deploy using the provided Helm chart:
+
+```bash
+helm install jaeger-kusto build/server/helm/ -n <namespace>
+helm upgrade jaeger-kusto build/server/helm/ -n <namespace>
+```
+
+### Configuration Properties
+
 | Property | Description | Default |
 | --- | --- | --- |
-logLevel | Log level for the plugin | info |
-logJson | Log format | false |
-readNoTruncation | In case [KustoQueryLimits](aka.ms/kustoquerylimits) are hit, use this property to enable no-truncation | false |
-readNoTimeout | The default query timeout is 10 minutes which should be sufficient for most cases. In case this needs to be extended to no-timeout | false |
-clientId | Client ID for the plugin, represents the ClientId in case of ManagedIdentity. Set it to the AAD APP Id to use AAD Auth | "" |
-clientSecret | If AAD Auth is used, set this to the AAD APP Secret for the APP Id| "" |
-tenantId | The AAD tenant to use for authentication | "" |
-useManagedIdentity | Use managed identity for authentication (Keyless , recommended) | false |
-useWorkloadIdentity | Use Azure default credentials (uses workload identity in case it is defined) for authentication | false |
-database | Database name to query the traces | "" |
-clusterUrl | Cluster URL where the OTEL traces have been ingested | "" |
-traceTableName | Trace table name to query | "OTELTraces" |
-image.repository | The repository to pull the kusto-jaeger plugin | e.g. agramachandran/jaeger-kusto |
-image.tag | The tag of kusto-jaeger-plugin to use  | e.g. "1.1.0-Preview" |
-image.pullPolicy | Image pull policy | "IfNotPresent" |
+| `baseConfig.logLevel` | Log level for the plugin | `info` |
+| `baseConfig.logJson` | JSON log format | `false` |
+| `baseConfig.readNoTruncation` | Bypass [Kusto query limits](https://aka.ms/kustoquerylimits) | `false` |
+| `baseConfig.readNoTimeout` | Extend default 10min query timeout | `false` |
+| `authConfig.clientId` | AAD App ID or Managed Identity client ID | `""` |
+| `authConfig.clientSecret` | AAD App Secret | `""` |
+| `authConfig.tenantId` | AAD tenant ID | `""` |
+| `authConfig.useManagedIdentity` | Use managed identity auth | `false` |
+| `authConfig.useWorkloadIdentity` | Use workload identity auth | `false` |
+| `authConfig.database` | Kusto database name | `""` |
+| `authConfig.clusterUrl` | Kusto cluster URL | `""` |
+| `authConfig.traceTableName` | Trace table name | `"OTELTraces"` |
+| `authConfig.metricsViewName` | Materialized view for RED metrics | `""` |
+| `image.repository` | Plugin image repository | `sdkdemosacr.azurecr.io/jaeger-kusto` |
+| `image.tag` | Plugin image tag | `"2.0.0-Preview"` |
+| `image.pullPolicy` | Image pull policy | `"Always"` |
+| `jaeger.image` | Jaeger image | `"jaegertracing/jaeger"` |
+| `jaeger.imageTag` | Jaeger image tag | `"2"` |
+| `metrics.enabled` | Enable RED metrics / SPM | `true` |
 
 
 
 
 ## Known Limitations
 
-The plugin is in early development stage (alpha) has the following known limitations:
-
-* Currently search by tags is not implemented
-* There are deprecated API's in use. These will be fixed in a newer version of the plugin.
+* Tag-based search is supported for span attributes and resource attributes
+* The TraceService (write path) is a no-op — ingestion must be handled by the OTEL Collector's ADX exporter
 
 
 ## RED Metrics / Service Performance Monitoring (SPM)
@@ -166,6 +180,12 @@ extensions:
       kusto_traces:
         grpc:
           endpoint: "jaeger-kusto:8989"
+          tls:
+            insecure: true
+          writer:
+            endpoint: "jaeger-kusto:8989"
+            tls:
+              insecure: true
     metric_backends:
       kusto_metrics:
         prometheus:

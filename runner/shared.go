@@ -2,18 +2,16 @@ package runner
 
 import (
 	"github.com/dodopizza/jaeger-kusto/config"
+	"github.com/dodopizza/jaeger-kusto/store"
 	ot "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/hashicorp/go-hclog"
-	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 )
 
-func Serve(c *config.PluginConfig, store shared.StoragePlugin, logger hclog.Logger) error {
-	if c.RemoteMode {
-		return serveServer(c, store, logger)
-	}
-	return servePlugin(c, store, logger)
+// Serve starts the V2 gRPC remote storage server.
+func Serve(c *config.PluginConfig, v2store *store.V2Store, logger hclog.Logger) error {
+	return serveServer(c, v2store, logger)
 }
 
 func newGRPCServerWithTracer(tracer opentracing.Tracer) *grpc.Server {

@@ -3,11 +3,28 @@
 # This configuration uses:
 #   - gRPC remote storage for traces → jaeger-kusto plugin
 #   - PromQL shim for metrics → kusto-promql-shim (built into jaeger-kusto)
+#   - OTEL TraceService (no-op write) → jaeger-kusto handles read-only
 #
-# Start the jaeger-kusto plugin with metricsEnabled=true first,
-# then start Jaeger V2 with this config.
+# Start the jaeger-kusto plugin first, then start Jaeger V2 with this config.
+
+service:
+  extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
+  telemetry:
+    resource:
+      service.name: jaeger
+    logs:
+      level: info
 
 extensions:
+  healthcheckv2:
+    use_v2: true
+    http:
+
   jaeger_storage:
     backends:
       kusto_traces:
@@ -16,6 +33,10 @@ extensions:
           timeout: 30s
           tls:
             insecure: true
+          writer:
+            endpoint: "jaeger-kusto:8989"
+            tls:
+              insecure: true
 
     metric_backends:
       kusto_metrics:
@@ -37,13 +58,9 @@ receivers:
       http:
         endpoint: "0.0.0.0:4318"
 
+processors:
+  batch:
+
 exporters:
   jaeger_storage_exporter:
     trace_storage: kusto_traces
-
-service:
-  extensions: [jaeger_storage, jaeger_query]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      exporters: [jaeger_storage_exporter]

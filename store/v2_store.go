@@ -7,15 +7,13 @@ import (
 	"github.com/Azure/azure-kusto-go/azkustodata"
 	"github.com/dodopizza/jaeger-kusto/config"
 	"github.com/hashicorp/go-hclog"
-	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
-	"github.com/jaegertracing/jaeger/storage/dependencystore"
-	"github.com/jaegertracing/jaeger/storage/spanstore"
 )
 
-type store struct {
-	dependencyStoreReader dependencystore.Reader
-	reader                spanstore.Reader
-	writer                spanstore.Writer
+// V2Store holds the V2 gRPC service implementations for registration.
+type V2Store struct {
+	TraceReader      *TraceReaderService
+	DependencyReader *DependencyReaderService
+	TraceWriter      *TraceWriterService
 }
 
 // NewKustoClient creates a new Kusto client from the given configuration.
@@ -46,14 +44,13 @@ func NewKustoClient(kc *config.KustoConfig, logger hclog.Logger) (*azkustodata.C
 	return azkustodata.New(kcsb)
 }
 
-// NewStore creates new Kusto store for Jaeger span storage
-func NewStore(kc *config.KustoConfig, pc *config.PluginConfig, logger hclog.Logger) (shared.StoragePlugin, error) {
+// NewV2Store creates the V2 gRPC service implementations backed by Kusto.
+func NewV2Store(kc *config.KustoConfig, pc *config.PluginConfig, logger hclog.Logger) (*V2Store, error) {
 	client, err := NewKustoClient(kc, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	// create factory for trace table operations
 	factory := newKustoFactory(client, kc.Database, kc.TraceTableName)
 
 	var cache *discoveryCache
@@ -69,38 +66,18 @@ func NewStore(kc *config.KustoConfig, pc *config.PluginConfig, logger hclog.Logg
 		logger.Info("Discovery query caching enabled", "ttl", cacheTTL)
 	}
 
-	reader, err := newKustoSpanReader(factory, logger, kc.ClientRequestOptions, cache)
-	if err != nil {
-		return nil, err
-	}
+	reader := newKustoV2Reader(factory, logger, kc.ClientRequestOptions, cache)
 
 	// Start background dependency cache refresh when caching is enabled
 	if cache != nil {
-		refresher := newDependencyRefresher(reader, cache, cacheTTL, logger)
+		refresher := newDependencyRefresherV2(reader, cache, cacheTTL, logger)
 		reader.depRefresher = refresher
 		refresher.start()
 	}
 
-	store := &store{
-		dependencyStoreReader: reader,
-		reader:                reader,
-		writer:                &noopSpanWriter{},
-	}
-
-	return store, nil
-}
-
-// DependencyReader returns implementation of dependencystore.Reader interface
-func (store *store) DependencyReader() dependencystore.Reader {
-	return store.dependencyStoreReader
-}
-
-// SpanReader returns implementation of spanstore.Reader interface
-func (store *store) SpanReader() spanstore.Reader {
-	return store.reader
-}
-
-// SpanWriter returns implementation of spanstore.Writer interface
-func (store *store) SpanWriter() spanstore.Writer {
-	return store.writer
+	return &V2Store{
+		TraceReader:      NewTraceReaderService(reader, logger),
+		DependencyReader: NewDependencyReaderService(reader, logger),
+		TraceWriter:      NewTraceWriterService(logger),
+	}, nil
 }

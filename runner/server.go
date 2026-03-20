@@ -2,10 +2,6 @@ package runner
 
 import (
 	"fmt"
-	"github.com/dodopizza/jaeger-kusto/config"
-	"github.com/hashicorp/go-hclog"
-	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
-	"google.golang.org/grpc"
 	"net"
 	"net/url"
 	"os"
@@ -13,13 +9,16 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/dodopizza/jaeger-kusto/config"
+	collectortrace "github.com/dodopizza/jaeger-kusto/proto-gen/collector/trace/v1"
+	storagev2 "github.com/dodopizza/jaeger-kusto/proto-gen/storage/v2"
+	"github.com/dodopizza/jaeger-kusto/store"
+	"github.com/hashicorp/go-hclog"
+	"google.golang.org/grpc"
 )
 
-func serveServer(c *config.PluginConfig, store shared.StoragePlugin, logger hclog.Logger) error {
-	plugin := shared.StorageGRPCPlugin{
-		Impl: store,
-	}
-
+func serveServer(c *config.PluginConfig, v2store *store.V2Store, logger hclog.Logger) error {
 	tracer, closer, err := config.NewPluginTracer(c)
 	if err != nil {
 		return err
@@ -27,9 +26,11 @@ func serveServer(c *config.PluginConfig, store shared.StoragePlugin, logger hclo
 	defer closer.Close()
 
 	server := newGRPCServerWithTracer(tracer)
-	if err := plugin.GRPCServer(nil, server); err != nil {
-		return err
-	}
+
+	// Register V2 storage services
+	storagev2.RegisterTraceReaderServer(server, v2store.TraceReader)
+	storagev2.RegisterDependencyReaderServer(server, v2store.DependencyReader)
+	collectortrace.RegisterTraceServiceServer(server, v2store.TraceWriter)
 
 	scheme, address, err := parseListenAddress(c.RemoteListenAddress)
 	if err != nil {
@@ -46,7 +47,7 @@ func serveServer(c *config.PluginConfig, store shared.StoragePlugin, logger hclo
 		return err
 	}
 
-	logger.Info("starting server", "address", address, "scheme", scheme)
+	logger.Info("starting V2 remote storage server", "address", address, "scheme", scheme)
 	wg := registerGracefulShutdown(server, logger)
 	if err := server.Serve(listener); err != nil {
 		return err

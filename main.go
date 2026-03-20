@@ -39,9 +39,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	kustoStore, err := store.NewStore(kustoConfig, pluginConfig, logger)
+	v2Store, err := store.NewV2Store(kustoConfig, pluginConfig, logger)
 	if err != nil {
-		logger.Error("error occurred while initializing kusto storage", "error", err)
+		logger.Error("error occurred while initializing kusto V2 storage", "error", err)
 		os.Exit(2)
 	}
 
@@ -82,7 +82,7 @@ func main() {
 		}()
 	}
 
-	if err := runner.Serve(pluginConfig, kustoStore, logger); err != nil {
+	if err := runner.Serve(pluginConfig, v2Store, logger); err != nil {
 		logger.Error("error occurred while invoking runner", "error", err)
 		os.Exit(3)
 	}

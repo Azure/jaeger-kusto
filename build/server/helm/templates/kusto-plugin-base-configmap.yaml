@@ -7,7 +7,6 @@ data:
         "tracingRPCMetrics": false,
         "logLevel": {{ .Values.baseConfig.logLevel | quote | default "info"}},
         "logJson": {{ default true .Values.baseConfig.logJson }},
-        "remoteMode": {{ default true .Values.baseConfig.remoteMode }},
         "tracingSamplerPercentage":   {{ default 0.0 .Values.baseConfig.tracingSamplerPercentage }},
         "readNoTruncation": {{ default false .Values.baseConfig.readNoTruncation }},
         "readNoTimeout": {{ default false .Values.baseConfig.readNoTimeout }},

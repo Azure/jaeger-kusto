@@ -12,7 +12,6 @@ type PluginConfig struct {
 	KustoConfigPath             string  `json:"kustoConfigPath"`
 	LogLevel                    string  `json:"logLevel"`
 	LogJson                     bool    `json:"logJson"`
-	RemoteMode                  bool    `json:"remoteMode"`
 	RemoteListenAddress         string  `json:"remoteListenAddress"`
 	TracingSamplerPercentage    float64 `json:"tracingSamplerPercentage"`
 	TracingRPCMetrics           bool    `json:"tracingRPCMetrics"`
@@ -32,7 +31,6 @@ func NewDefaultPluginConfig() *PluginConfig {
 		KustoConfigPath:             "",
 		LogLevel:                    "warn",
 		LogJson:                     false,
-		RemoteMode:                  false,
 		RemoteListenAddress:         "tcp://:8989",
 		TracingSamplerPercentage:    0.0,   // disabled by default
 		TracingRPCMetrics:           false, // disabled by default

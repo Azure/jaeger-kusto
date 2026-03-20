@@ -49,21 +49,25 @@ helm upgrade jaeger-kusto build/server/helm/ -n <namespace>
 
 This plugin exists to provide a **Jaeger UI** for traces that are collected via the **OpenTelemetry Collector** and stored in **Azure Data Explorer (Kusto)**. It is a read-only bridge — the OTEL Collector's ADX exporter handles ingestion; this plugin only queries Kusto to render traces in Jaeger. It does not collect or store metrics itself; the `metrics/` package is a PromQL translation shim that computes RED metrics on-the-fly from the same trace data in Kusto.
 
-It implements `shared.StoragePlugin` from Jaeger's gRPC plugin framework. The `SpanWriter` is a no-op.
+It implements three **Jaeger V2 gRPC Remote Storage** services using OTLP-native protobuf types:
+- **TraceReader** — GetTraces (streaming), GetServices, GetOperations, FindTraces (streaming), FindTraceIDs
+- **DependencyReader** — GetDependencies
+- **TraceService** (OTEL proto) — Export (no-op)
 
 ### Data Flow
 
 ```
-Jaeger UI → Jaeger Query → gRPC → runner/ → store/ → Kusto (OTELTraces table)
-                                                        ↑
-Jaeger V2 Monitor tab → PromQL → metrics/ ──────────────┘
+Jaeger V2 UI → Jaeger Query → gRPC Remote Storage → runner/ → store/ → Kusto (OTELTraces table)
+                                                                          ↑
+Jaeger V2 Monitor tab → PromQL → metrics/ ────────────────────────────────┘
                                   (HTTP shim)   (SpanMetrics materialized view)
 ```
 
 ### Key Packages
 
-- **`store/`** — Jaeger `SpanReader`/`DependencyReader` backed by Kusto. Reads query the `OTELTraces` table via KQL. The `SpanWriter` is a no-op (ingestion is handled by the OTEL exporter).
-- **`runner/`** — Startup logic. Two modes: `servePlugin` (Jaeger V1 hashicorp/go-plugin over stdio) or `serveServer` (standalone gRPC server when `remoteMode: true`).
+- **`store/`** — V2 gRPC service implementations backed by Kusto. `v2_trace_reader.go` (TraceReader), `v2_dependency_reader.go` (DependencyReader), `v2_trace_writer.go` (no-op TraceService), `v2_reader.go` (KQL query logic), `otlp_converter.go` (Kusto rows → OTLP TracesData).
+- **`proto-gen/`** — Generated protobuf Go code for `storage/v2/` (TraceReader, DependencyReader) and `collector/trace/v1/` (OTEL TraceService). Generated from protos in `proto/`.
+- **`runner/`** — Standalone gRPC server that registers V2 services. Always runs in remote/server mode (no hashicorp/go-plugin).
 - **`config/`** — Two config files parsed by Viper: a plugin config (JSON, `--config` flag) and a Kusto config (JSON, path set in plugin config via `kustoConfigPath`). Environment variables override plugin config with prefix `JAEGER_KUSTO_PLUGIN`.
 - **`metrics/`** — PromQL shim HTTP server for Jaeger V2 SPM/RED metrics. Parses Jaeger's PromQL queries (3 fixed patterns: latency histogram, call rate, error rate), translates them to KQL, and returns Prometheus-compatible JSON responses. Can query a pre-computed `SpanMetrics` materialized view or fall back to raw `OTELTraces`. Enabled via `metricsEnabled` in plugin config.
 
