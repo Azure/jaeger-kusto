@@ -6,13 +6,19 @@
 #
 # Start the jaeger-kusto plugin with metricsEnabled=true first,
 # then start Jaeger V2 with this config.
+#
+# For docker-compose: endpoints use service name "plugin"
+# For Kubernetes: override endpoints via Helm values (jaeger-v2-configmap.yaml)
 
 extensions:
+  healthcheckv2:
+    endpoint: "0.0.0.0:13133"
+
   jaeger_storage:
     backends:
       kusto_traces:
         grpc:
-          endpoint: "jaeger-kusto:8989"
+          endpoint: "plugin:8989"
           timeout: 30s
           tls:
             insecure: true
@@ -20,12 +26,13 @@ extensions:
     metric_backends:
       kusto_metrics:
         prometheus:
-          endpoint: "http://jaeger-kusto:9090"
+          endpoint: "http://plugin:9090"
 
   jaeger_query:
     storage:
       traces: kusto_traces
       metrics: kusto_metrics
+    base_path: /tracing
     ui:
       config_file: /etc/jaeger/jaeger-ui.json
 
@@ -42,7 +49,7 @@ exporters:
     trace_storage: kusto_traces
 
 service:
-  extensions: [jaeger_storage, jaeger_query]
+  extensions: [healthcheckv2, jaeger_storage, jaeger_query]
   pipelines:
     traces:
       receivers: [otlp]

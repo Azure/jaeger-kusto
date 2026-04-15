@@ -1,62 +1,76 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  namespace: {{ .Release.Namespace }}
   labels:
     io.service.name: kusto-jaeger
   name: jaeger
 spec:
-  replicas: 2
+  replicas: {{ .Values.jaeger.replicas | default 2 }}
   selector:
     matchLabels:
       io.service.name: kusto-jaeger
   template:
     metadata:
-      annotations:
-        service.version: 1.1.0-Preview
       labels:
         io.kompose.network/server-default: "true"
         io.service.name: kusto-jaeger
     spec:
       containers:
-        - args:
-            - --grpc-storage.server=kusto-jaeger-plugin:8989
-            - --grpc-storage.connection-timeout=60s
-            - --grpc-storage.tls.enabled=false
-            - --query.base-path=/tracing
-            {{- if .Values.metrics.enabled }}
-            - --prometheus.server-url={{ .Values.metrics.prometheusServerUrl | default "http://kusto-jaeger-plugin:9090" }}
-            - --prometheus.query.normalize-calls=true
-            - --prometheus.query.normalize-duration=true
-            {{- end }}
-          env:
-            - name: SPAN_STORAGE_TYPE
-              value: grpc
-            {{- if .Values.metrics.enabled }}
-            - name: METRICS_STORAGE_TYPE
-              value: prometheus
-            {{- end }}
-          image: jaegertracing/all-in-one:1.76.0
-          name: jaeger
+        - name: jaeger
+          image: {{ .Values.jaeger.image }}:{{ .Values.jaeger.imageTag }}
+          args:
+            - --config=/etc/jaeger/jaeger-v2-config.yaml
           ports:
-            - containerPort: 16686
-              hostPort: 16686
+            - name: query-http
+              containerPort: 16686
               protocol: TCP
-            - containerPort: 16687
-              hostPort: 16687
+            - name: query-grpc
+              containerPort: 16685
               protocol: TCP
-          {{- if .Values.metrics.enabled }}
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 10
           volumeMounts:
+            - name: jaeger-v2-config
+              mountPath: /etc/jaeger/jaeger-v2-config.yaml
+              subPath: jaeger-v2-config.yaml
+            {{- if .Values.metrics.enabled }}
             - name: jaeger-ui-config
               mountPath: /etc/jaeger/jaeger-ui.json
               subPath: jaeger-ui.json
-          {{- end }}
+            {{- end }}
       restartPolicy: Always
-      {{- if .Values.metrics.enabled }}
       volumes:
+        - name: jaeger-v2-config
+          configMap:
+            name: jaeger-v2-config
+            items:
+              - key: jaeger-v2-config.yaml
+                path: jaeger-v2-config.yaml
+        {{- if .Values.metrics.enabled }}
         - name: jaeger-ui-config
           configMap:
             name: jaeger-ui-config
             items:
               - key: jaeger-ui.json
                 path: jaeger-ui.json
-      {{- end }}
+        {{- end }}
